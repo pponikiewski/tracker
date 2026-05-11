@@ -1,46 +1,122 @@
-# Dependencies
-node_modules/
-.pnpm-store/
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Build outputs
-dist/
-build/
-out/
-.next/
-.turbo/
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/
 *.rs.bk
-Cargo.lock
 
 # Env / secrets
 .env
 .env.*
 !.env.example
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Local DB / Supabase
+# Local DB
 supabase/.branches
 supabase/.temp
 *.sqlite
 *.sqlite-journal
 *.db
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Build / cache
+*.tsbuildinfo
+.eslintcache
+.cache/
+.parcel-cache/
+.vite/
+
+# Coverage / testy
+coverage/
+.nyc_output/
+*.lcov
+
+# Tauri build artifacts
+src-tauri/WixTools/
+src-tauri/.cargo/
+
+# Lock files innych managerów (zostaje pnpm-lock.yaml)
+package-lock.json
+yarn.lock
+bun.lockb
+
+# IDE
+*.iml
+.history/
+.cursor/
+
+# Local agent / scratch
+.claude/local/
+.aider*
+.continue/
+
+# Tymczasowe
+*.tmp
+*.bak
+*.orig
+*~
+
+# Tauri code signing / secrets
+*.key
+*.pem
+*.p12
+*.pfx
+tauri-private.key*
+*.tauri-updater-key*
+
+# Test / E2E artifacts
+playwright-report/
+test-results/
+junit.xml
+*.snap.png.new
+
+# Build cache (other tools)
+.turbo/
+.next/
+.svelte-kit/
+.astro/
+
+# Tauri / Vite local override
+.tauri/
+vite.config.local.*
+
+# Supabase local
+supabase/.env
+supabase/seed-output.sql
+supabase/types.generated.ts
+
+# Generated types
+src/types/generated/
+src/lib/db/generated/
+
+# Misc
+*.pid
+*.seed
+*.pid.lock
+.eslintcache
+.stylelintcache

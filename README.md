@@ -1,7 +1,7 @@
-# tracker
+# Tauri + React + Typescript
 
-Multi-tenant desktop app for team time tracking and project management.
+This template should help get you started developing with Tauri, React and Typescript in Vite.
 
-Stack: Tauri (Rust) + React + Supabase (PostgreSQL + Auth + Realtime + Storage).
+## Recommended IDE Setup
 
-Spec: see `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna-i-logiczna-jiggly-nebula.md`.
+- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
