@@ -8,9 +8,9 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 
 ## Current phase
 
-**Faza 1 — MVP Local (DONE).** SQLite via `tauri-plugin-sql`, drzewo projektów (materialized path), custom context menu, log work modal z parserem czasu, soft delete + lift/detach operations, recalc cached_minutes po insert event. Zustand store. Single-user, brak auth.
+**Faza 2 — Dashboard (DONE).** Recharts Pie (czas wg projektów) + Bar (czas dziennie). Filtry: zakres dat (presets 7d/30d/90d/365d + custom), multi-select projektów. 4 karty stats: dzisiaj / tydzień / miesiąc / w zakresie. View switcher Projekty/Dashboard.
 
-**Next: Faza 2 — Dashboard** (Recharts + filtry na lokalnych danych).
+**Next: Faza 3 — Polish UX** (skróty klawiszowe, drag-drop, CSV export, dark mode, code-split bundle).
 
 ---
 
@@ -29,8 +29,9 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 | Package manager | pnpm | 10 |
 | Lokalne DB | SQLite (`tauri-plugin-sql`) | sqlx 0.8 |
 | State | Zustand | 5 |
+| Wykresy | Recharts | 3+ |
 
-Planowane (kolejne fazy): Recharts (Faza 2), Supabase + Auth (Faza 4), Realtime (Faza 7).
+Planowane (kolejne fazy): Supabase + Auth (Faza 4), Realtime (Faza 7).
 
 ---
 
@@ -95,15 +96,17 @@ tracker/
 └── package.json
 ```
 
-Aktualne (Faza 1):
+Aktualne (Fazy 1-2):
 - `src/components/Tree/` — `TreeView`, `TreeNode`
+- `src/components/Dashboard/` — `DashboardView`, `StatsCard`, `ProjectsPieChart`, `DailyBarChart`
 - `src/components/` — `ContextMenu`, `PromptModal`, `ColorPickerModal`, `LogWorkModal`, `ProjectsView`
-- `src/lib/db/` — `schema.ts`, `types.ts`, `connection.ts`, `queries.ts`
+- `src/lib/db/` — `schema.ts`, `types.ts`, `connection.ts`, `queries.ts` (`listEventsInRange`)
 - `src/lib/utils/` — `time.ts` (parser + format), `tree.ts` (buildTree, path helpers), `uuid.ts`
+- `src/lib/analytics/aggregate.ts` — `aggregate`, `daysAgoIso`, `fillDailyGaps`, `rootIdOfPath`
+- `src/lib/hooks/useEventsRange.ts` — async fetch hook (loading/error/events)
 - `src/store/projects.ts` — Zustand store (resources, tree, expansion, CRUD actions)
 
 Plan future folders (kolejne fazy):
-- `src/components/Dashboard/` — wykresy (Faza 2)
 - `src/lib/sync/` — outbox queue (Faza 4+)
 - `supabase/migrations/` — postgres migracje (Faza 4+)
 
@@ -194,7 +197,7 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 
 0. **Scaffolding** ✓
 1. **MVP Local** ✓ — SQLite, single-user, drzewo + log work + context menu
-2. Dashboard — Recharts + filtry
+2. **Dashboard** ✓ — Recharts (Pie/Bar) + filtry data + projekty + stats cards
 3. Polish UX — skróty, drag-drop, CSV, dark mode
 4. Supabase Auth + single-user cloud sync
 5. Multi-tenant schema — workspaces, ltree, RLS

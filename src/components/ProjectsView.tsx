@@ -162,7 +162,9 @@ export function ProjectsView() {
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
-        <h1 className="text-sm font-semibold tracking-tight">tracker</h1>
+        <span className="text-xs uppercase tracking-wide text-neutral-500">
+          Drzewo projektów
+        </span>
         <span className="text-xs text-neutral-500">
           {loading ? "Ładowanie..." : `${resources.length} węzłów`}
         </span>

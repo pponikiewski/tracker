@@ -207,6 +207,28 @@ export async function listEventsForResource(resourceId: string): Promise<TimeEve
   );
 }
 
+export interface EventWithResource extends TimeEvent {
+  resource_name: string;
+  resource_path: string;
+}
+
+export async function listEventsInRange(
+  fromIso: string,
+  toIso: string,
+): Promise<EventWithResource[]> {
+  const db = await getDb();
+  return db.select<EventWithResource[]>(
+    `SELECT e.*, r.name AS resource_name, r.path AS resource_path
+     FROM events e
+     JOIN resources r ON r.id = e.resource_id
+     WHERE e.deleted_at IS NULL
+       AND r.deleted_at IS NULL
+       AND e.date >= $1 AND e.date <= $2
+     ORDER BY e.date`,
+    [fromIso, toIso],
+  );
+}
+
 /**
  * Recalculate cached_minutes for the given resource and ALL its ancestors.
  * Each row's cached_minutes = sum of minutes for active events in its subtree.
