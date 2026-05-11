@@ -12,6 +12,7 @@ export function useEventsRange(fromIso: string, toIso: string): State {
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch with cancel guard is the canonical pattern here
     setState((s) => ({ ...s, loading: true, error: null }));
     listEventsInRange(fromIso, toIso).then(
       (rows) => {

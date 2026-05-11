@@ -6,6 +6,8 @@ import {
   detachChildrenAsProjects,
   liftChildrenAndDelete,
   listActiveResources,
+  moveResource,
+  renameResource,
   setResourceColor,
   softDeleteSubtree,
   type CreateEventInput,
@@ -24,6 +26,8 @@ interface ProjectsState {
 
   addProject: (name: string) => Promise<void>;
   addChild: (parentId: string, name: string, type: ResourceType) => Promise<void>;
+  rename: (id: string, name: string) => Promise<void>;
+  move: (id: string, newParentId: string | null) => Promise<void>;
   changeColor: (id: string, color: string | null) => Promise<void>;
   deleteSubtree: (id: string) => Promise<void>;
   liftAndDelete: (id: string) => Promise<void>;
@@ -63,6 +67,16 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   addChild: async (parentId, name, type) => {
     await createResource({ parentId, name, type });
     set((s) => ({ expandedIds: new Set([...s.expandedIds, parentId]) }));
+    await get().refresh();
+  },
+
+  rename: async (id, name) => {
+    await renameResource(id, name);
+    await get().refresh();
+  },
+
+  move: async (id, newParentId) => {
+    await moveResource(id, newParentId);
     await get().refresh();
   },
 

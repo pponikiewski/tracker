@@ -5,7 +5,8 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { PromptModal } from "./PromptModal";
 import { ColorPickerModal } from "./ColorPickerModal";
 import { LogWorkModal } from "./LogWorkModal";
-import { defaultChildType, type Resource, type ResourceType } from "@/lib/db/types";
+import { canParent, defaultChildType, type Resource, type ResourceType } from "@/lib/db/types";
+import { isDescendantPath } from "@/lib/utils/tree";
 
 const TYPE_LABEL: Record<ResourceType, string> = {
   project: "Projekt",
@@ -26,6 +27,12 @@ interface PromptState {
   onConfirm: (value: string) => void;
 }
 
+const isEditableTarget = (el: EventTarget | null): boolean => {
+  if (!(el instanceof HTMLElement)) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+};
+
 export function ProjectsView() {
   const {
     resources,
@@ -37,6 +44,8 @@ export function ProjectsView() {
     toggleExpanded,
     addProject,
     addChild,
+    rename,
+    move,
     changeColor,
     deleteSubtree,
     liftAndDelete,
@@ -45,6 +54,9 @@ export function ProjectsView() {
   } = useProjects();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [colorTargetId, setColorTargetId] = useState<string | null>(null);
@@ -69,6 +81,8 @@ export function ProjectsView() {
   };
 
   const handleContextNode = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
     setSelectedId(id);
     setMenu({ x: e.clientX, y: e.clientY, targetId: id });
   };
@@ -95,6 +109,119 @@ export function ProjectsView() {
     });
   };
 
+  // ---- Drag-drop ----
+
+  const canDropOn = (sourceId: string, targetId: string | null): boolean => {
+    const source = findResource(sourceId);
+    if (!source) return false;
+    if (targetId === null) {
+      // Dropping at root area = make project.
+      return source.type !== "project" || source.parent_id !== null;
+    }
+    if (sourceId === targetId) return false;
+    const target = findResource(targetId);
+    if (!target) return false;
+    if (isDescendantPath(source.path, target.path)) return false;
+    return canParent(target.type, source.type);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    if (!draggingId) return;
+    if (canDropOn(draggingId, id)) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      if (dropTargetId !== id) setDropTargetId(id);
+    } else {
+      e.dataTransfer.dropEffect = "none";
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent, id: string) => {
+    if (!draggingId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const src = draggingId;
+    setDraggingId(null);
+    setDropTargetId(null);
+    if (!canDropOn(src, id)) return;
+    try {
+      await move(src, id);
+    } catch {
+      /* validation error — silently ignore for MVP */
+    }
+  };
+
+  const handleDragOverEmpty = (e: React.DragEvent) => {
+    if (!draggingId) return;
+    if (canDropOn(draggingId, null)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    }
+  };
+
+  const handleDropEmpty = async (e: React.DragEvent) => {
+    if (!draggingId) return;
+    e.preventDefault();
+    const src = draggingId;
+    setDraggingId(null);
+    setDropTargetId(null);
+    if (!canDropOn(src, null)) return;
+    try {
+      await move(src, null);
+    } catch {
+      /* */
+    }
+  };
+
+  // ---- Keyboard shortcuts ----
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      // Ctrl+N → new project
+      if (mod && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        openNewProjectPrompt();
+        return;
+      }
+      // Esc → clear selection / close rename
+      if (e.key === "Escape") {
+        setRenamingId(null);
+        setMenu(null);
+        return;
+      }
+      if (!selectedId) return;
+      // F2 or Enter → rename selected
+      if (e.key === "F2" || (e.key === "Enter" && !mod)) {
+        e.preventDefault();
+        setRenamingId(selectedId);
+        return;
+      }
+      // Delete → soft delete subtree
+      if (e.key === "Delete" || (mod && e.key === "Backspace")) {
+        e.preventDefault();
+        void deleteSubtree(selectedId);
+        setSelectedId(null);
+        return;
+      }
+      // L → log work
+      if (!mod && e.key.toLowerCase() === "l") {
+        const r = findResource(selectedId);
+        if (r) {
+          e.preventDefault();
+          setLogWorkResource(r);
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, resources]);
+
+  // ---- Menu items ----
+
   const buildMenuItems = (targetId: string | null): MenuEntry[] => {
     if (targetId === null) {
       return [{ label: "Nowy Projekt", onClick: openNewProjectPrompt }];
@@ -104,8 +231,12 @@ export function ProjectsView() {
 
     const items: MenuEntry[] = [];
     items.push({
-      label: "Loguj czas...",
+      label: "Loguj czas... (L)",
       onClick: () => setLogWorkResource(node),
+    });
+    items.push({
+      label: "Zmień nazwę (F2)",
+      onClick: () => setRenamingId(node.id),
     });
     items.push({ separator: true });
 
@@ -127,7 +258,6 @@ export function ProjectsView() {
         label: `Dodaj ${TYPE_LABEL[childType]}`,
         onClick: () => openAddChildPrompt(node.id, childType),
       });
-      // Shortcut to task from project/stage.
       if (childType !== "task" && (node.type === "project" || node.type === "stage")) {
         items.push({
           label: "Dodaj Zadanie (skrót)",
@@ -139,7 +269,6 @@ export function ProjectsView() {
     items.push({ separator: true });
 
     if (node.type === "project") {
-      // Root destructive actions.
       items.push({
         label: "Zostaw podległe jako projekty",
         onClick: () => void detachAsProjects(node.id),
@@ -151,7 +280,7 @@ export function ProjectsView() {
       });
     }
     items.push({
-      label: "Usuń wraz z podległymi",
+      label: "Usuń wraz z podległymi (Delete)",
       danger: true,
       onClick: () => void deleteSubtree(node.id),
     });
@@ -164,6 +293,9 @@ export function ProjectsView() {
       <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
         <span className="text-xs uppercase tracking-wide text-neutral-500">
           Drzewo projektów
+          <span className="ml-3 normal-case text-neutral-600">
+            Ctrl+N nowy · F2 zmień nazwę · L log · Delete usuń · Drag-drop
+          </span>
         </span>
         <span className="text-xs text-neutral-500">
           {loading ? "Ładowanie..." : `${resources.length} węzłów`}
@@ -181,19 +313,37 @@ export function ProjectsView() {
           tree={tree}
           expandedIds={expandedIds}
           selectedId={selectedId}
+          renamingId={renamingId}
+          draggingId={draggingId}
+          dropTargetId={dropTargetId}
           onToggle={toggleExpanded}
           onSelect={setSelectedId}
-          onContextMenuNode={handleContextNode}
+          onContextMenu={handleContextNode}
           onContextMenuEmpty={handleContextEmpty}
+          onDragOverEmpty={handleDragOverEmpty}
+          onDropEmpty={handleDropEmpty}
           onLogWork={(id) => {
             const r = findResource(id);
             if (r) setLogWorkResource(r);
+          }}
+          onStartRename={setRenamingId}
+          onCommitRename={async (id, name) => {
+            await rename(id, name);
+            setRenamingId(null);
+          }}
+          onCancelRename={() => setRenamingId(null)}
+          onDragStart={(id) => setDraggingId(id)}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onDragEnd={() => {
+            setDraggingId(null);
+            setDropTargetId(null);
           }}
         />
       </main>
 
       <footer className="border-t border-neutral-800 px-4 py-1.5 text-[10px] text-neutral-500">
-        Prawy klik na drzewie albo pustym obszarze · Faza 1 MVP
+        Faza 3 · Polish UX
       </footer>
 
       {menu && (

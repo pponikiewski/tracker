@@ -8,9 +8,9 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 
 ## Current phase
 
-**Faza 2 — Dashboard (DONE).** Recharts Pie (czas wg projektów) + Bar (czas dziennie). Filtry: zakres dat (presets 7d/30d/90d/365d + custom), multi-select projektów. 4 karty stats: dzisiaj / tydzień / miesiąc / w zakresie. View switcher Projekty/Dashboard.
+**Faza 3 — Polish UX (DONE).** Code-split Dashboard (lazy import, initial bundle 222kB zamiast 599kB). Keyboard shortcuts (Ctrl+1/2 tabs, Ctrl+N nowy projekt, F2/Enter rename, L log work, Delete usuń). Inline rename (double-click lub F2). Drag-drop węzłów drzewa (HTML5 native, walidacja `canParent` + cycle check). CSV export eventów z dashboard. `moveResource` query + recalc cached_minutes dla obu ancestor chains.
 
-**Next: Faza 3 — Polish UX** (skróty klawiszowe, drag-drop, CSV export, dark mode, code-split bundle).
+**Next: Faza 4 — Supabase Auth + Single-User Cloud Sync** (opcjonalny backup do chmury, outbox pattern).
 
 ---
 
@@ -103,8 +103,9 @@ Aktualne (Fazy 1-2):
 - `src/lib/db/` — `schema.ts`, `types.ts`, `connection.ts`, `queries.ts` (`listEventsInRange`)
 - `src/lib/utils/` — `time.ts` (parser + format), `tree.ts` (buildTree, path helpers), `uuid.ts`
 - `src/lib/analytics/aggregate.ts` — `aggregate`, `daysAgoIso`, `fillDailyGaps`, `rootIdOfPath`
+- `src/lib/utils/csv.ts` — `eventsToCsv`, `downloadCsv` (BOM, RFC-style escaping)
 - `src/lib/hooks/useEventsRange.ts` — async fetch hook (loading/error/events)
-- `src/store/projects.ts` — Zustand store (resources, tree, expansion, CRUD actions)
+- `src/store/projects.ts` — Zustand store (resources, tree, expansion, CRUD + `rename` + `move`)
 
 Plan future folders (kolejne fazy):
 - `src/lib/sync/` — outbox queue (Faza 4+)
@@ -198,7 +199,7 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 0. **Scaffolding** ✓
 1. **MVP Local** ✓ — SQLite, single-user, drzewo + log work + context menu
 2. **Dashboard** ✓ — Recharts (Pie/Bar) + filtry data + projekty + stats cards
-3. Polish UX — skróty, drag-drop, CSV, dark mode
+3. **Polish UX** ✓ — code-split, skróty klawiszowe, inline rename, drag-drop, CSV export
 4. Supabase Auth + single-user cloud sync
 5. Multi-tenant schema — workspaces, ltree, RLS
 6. Team features — invites, assignments, avatary

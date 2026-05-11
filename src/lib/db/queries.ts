@@ -1,6 +1,6 @@
 import { getDb } from "./connection";
-import type { Resource, ResourceType, TimeEvent } from "./types";
-import { buildPath, parentPath } from "../utils/tree";
+import { canParent, type Resource, type ResourceType, type TimeEvent } from "./types";
+import { buildPath, isDescendantPath, parentPath } from "../utils/tree";
 import { newId } from "../utils/uuid";
 
 const now = () => Date.now();
@@ -66,6 +66,76 @@ export async function setResourceColor(id: string, color: string | null): Promis
     "UPDATE resources SET color = $1, updated_at = $2 WHERE id = $3",
     [color, now(), id],
   );
+}
+
+/**
+ * Move a node under a new parent. Validates type hierarchy and prevents cycles.
+ * Throws if move is illegal.
+ *
+ * Use newParentId=null to make `id` a top-level project (changes type to 'project').
+ */
+export async function moveResource(id: string, newParentId: string | null): Promise<void> {
+  const db = await getDb();
+  const node = await getResource(id);
+  if (!node) throw new Error("Resource not found");
+  if (node.parent_id === newParentId) return; // no-op
+
+  let newType: ResourceType = node.type;
+  let newPathPrefix = "";
+
+  if (newParentId === null) {
+    newType = "project";
+  } else {
+    const parent = await getResource(newParentId);
+    if (!parent) throw new Error("New parent not found");
+    if (isDescendantPath(node.path, parent.path)) {
+      throw new Error("Nie można przenieść węzła pod jego własne dziecko");
+    }
+    if (!canParent(parent.type, node.type)) {
+      throw new Error(
+        `Typ ${node.type} nie może być dzieckiem ${parent.type}`,
+      );
+    }
+    newPathPrefix = `${parent.path}/`;
+  }
+
+  const newPath = `${newPathPrefix}${id}`;
+  const ts = now();
+  await db.execute(
+    "UPDATE resources SET parent_id = $1, type = $2, path = $3, updated_at = $4 WHERE id = $5",
+    [newParentId, newType, newPath, ts, id],
+  );
+  await rewriteDescendantPaths(node.path, newPath);
+
+  // Recalculate cached_minutes for both old and new ancestor chains.
+  await recalcAncestorChain(node.path);
+  await recalcAncestorChain(newPath);
+}
+
+/**
+ * Re-aggregate cached_minutes for every ancestor in the given path (and self).
+ */
+async function recalcAncestorChain(path: string): Promise<void> {
+  const db = await getDb();
+  const ids = path.split("/");
+  for (const id of ids) {
+    const target = await getResource(id);
+    if (!target) continue;
+    const rows = await db.select<{ total: number | null }[]>(
+      `SELECT COALESCE(SUM(e.minutes), 0) as total
+       FROM events e
+       JOIN resources r ON r.id = e.resource_id
+       WHERE (r.path = $1 OR r.path LIKE $2)
+         AND e.deleted_at IS NULL
+         AND r.deleted_at IS NULL`,
+      [target.path, `${target.path}/%`],
+    );
+    const total = rows[0]?.total ?? 0;
+    await db.execute(
+      "UPDATE resources SET cached_minutes = $1 WHERE id = $2",
+      [total, id],
+    );
+  }
 }
 
 /** Soft-delete the resource and all descendants by path prefix. */

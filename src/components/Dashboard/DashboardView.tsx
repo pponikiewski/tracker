@@ -8,6 +8,8 @@ import {
 } from "@/lib/analytics/aggregate";
 import { todayIso } from "@/lib/utils/time";
 import { useEventsRange } from "@/lib/hooks/useEventsRange";
+import { downloadCsv, eventsToCsv } from "@/lib/utils/csv";
+import { rootIdOfPath } from "@/lib/analytics/aggregate";
 import { StatsCard } from "./StatsCard";
 import { ProjectsPieChart } from "./ProjectsPieChart";
 import { DailyBarChart } from "./DailyBarChart";
@@ -63,6 +65,16 @@ export function DashboardView() {
   };
   const clearSelection = () => setSelected(new Set());
 
+  const handleExportCsv = () => {
+    const filtered =
+      selected.size === 0
+        ? events
+        : events.filter((e) => selected.has(rootIdOfPath(e.resource_path)));
+    if (filtered.length === 0) return;
+    const csv = eventsToCsv(filtered);
+    downloadCsv(`tracker-${fromIso}_to_${toIso}.csv`, csv);
+  };
+
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       <header className="border-b border-neutral-800 px-4 py-3">
@@ -96,6 +108,15 @@ export function DashboardView() {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={events.length === 0}
+            className="ml-auto rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
+            title="Eksport widocznych eventów do CSV"
+          >
+            Eksport CSV
+          </button>
         </div>
 
         {projects.length > 0 && (

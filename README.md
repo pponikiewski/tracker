@@ -4,7 +4,7 @@ Multi-tenant desktop time tracker. Tauri 2 + React 19 + Tailwind v4 + Supabase (
 
 ## Status
 
-**Faza 2 — Dashboard (DONE).** Faza 3 (UX polish) — next.
+**Faza 3 — Polish UX (DONE).** Faza 4 (Supabase Auth + cloud sync) — next.
 
 Pełny roadmap: `CLAUDE.md` → sekcja "Phased rollout".
 
