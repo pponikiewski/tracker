@@ -72,6 +72,7 @@ bun.lockb
 
 # Local agent / scratch
 .claude/local/
+.claude/settings.local.json
 .aider*
 .continue/
 
