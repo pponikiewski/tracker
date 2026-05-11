@@ -2,6 +2,9 @@
 REM Helper for Windows: setup MSVC env + run pnpm tauri dev.
 REM Usage from project root: scripts\tauri-dev.cmd
 
+REM Add cargo to PATH (rustup install location)
+set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+
 set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if not exist "%VCVARS%" (
   set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
@@ -11,5 +14,5 @@ if not exist "%VCVARS%" (
   exit /b 1
 )
 
-call "%VCVARS%" >nul
+call "%VCVARS%" >nul 2>nul
 pnpm tauri dev %*

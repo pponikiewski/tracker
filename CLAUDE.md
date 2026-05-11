@@ -8,9 +8,9 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 
 ## Current phase
 
-**Faza 0 — Scaffolding (DONE).** Tauri + React + TS + Tailwind + ESLint + Prettier działa, build zielony.
+**Faza 1 — MVP Local (DONE).** SQLite via `tauri-plugin-sql`, drzewo projektów (materialized path), custom context menu, log work modal z parserem czasu, soft delete + lift/detach operations, recalc cached_minutes po insert event. Zustand store. Single-user, brak auth.
 
-**Next: Faza 1 — MVP Local** (single-user SQLite, brak auth, drzewo projektów + logowanie czasu).
+**Next: Faza 2 — Dashboard** (Recharts + filtry na lokalnych danych).
 
 ---
 
@@ -27,8 +27,10 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 | Format | Prettier | 3 |
 | Runtime | Rust | 1.95 |
 | Package manager | pnpm | 10 |
+| Lokalne DB | SQLite (`tauri-plugin-sql`) | sqlx 0.8 |
+| State | Zustand | 5 |
 
-Planowane (kolejne fazy): SQLite (`tauri-plugin-sql`), Recharts, shadcn/ui, Supabase, Realtime.
+Planowane (kolejne fazy): Recharts (Faza 2), Supabase + Auth (Faza 4), Realtime (Faza 7).
 
 ---
 
@@ -93,10 +95,15 @@ tracker/
 └── package.json
 ```
 
+Aktualne (Faza 1):
+- `src/components/Tree/` — `TreeView`, `TreeNode`
+- `src/components/` — `ContextMenu`, `PromptModal`, `ColorPickerModal`, `LogWorkModal`, `ProjectsView`
+- `src/lib/db/` — `schema.ts`, `types.ts`, `connection.ts`, `queries.ts`
+- `src/lib/utils/` — `time.ts` (parser + format), `tree.ts` (buildTree, path helpers), `uuid.ts`
+- `src/store/projects.ts` — Zustand store (resources, tree, expansion, CRUD actions)
+
 Plan future folders (kolejne fazy):
-- `src/components/Tree/` — drzewo projektów
-- `src/components/LogWork/` — modal logowania
-- `src/lib/db/` — SQLite wrapper (Faza 1)
+- `src/components/Dashboard/` — wykresy (Faza 2)
 - `src/lib/sync/` — outbox queue (Faza 4+)
 - `supabase/migrations/` — postgres migracje (Faza 4+)
 
@@ -141,9 +148,37 @@ Co MUSI zostać niezmienione przez cały projekt:
 
 ## Schema (current state)
 
-**Faza 0:** brak DB.
+**SQLite (lokalne, Faza 1):**
 
-**Faza 1 (next):** SQLite local — patrz spec `## Faza 1 — MVP Local` w pliku planu.
+```sql
+CREATE TABLE resources (
+  id TEXT PRIMARY KEY,                 -- UUID v4 (crypto.randomUUID)
+  parent_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('project','stage','substage','task')),
+  color TEXT,                          -- NULL = inherit from ancestor
+  path TEXT NOT NULL,                  -- materialized path "id1/id2/id3"
+  cached_minutes INTEGER NOT NULL DEFAULT 0,  -- sum subtree minutes (active events)
+  created_at INTEGER NOT NULL,         -- ms epoch (Date.now())
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER                   -- ms epoch, NULL = active
+);
+
+CREATE TABLE events (
+  id TEXT PRIMARY KEY,
+  resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,                  -- ISO YYYY-MM-DD
+  minutes INTEGER NOT NULL CHECK (minutes > 0),  -- NEVER float hours
+  goal TEXT, topics TEXT, notes TEXT, report TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER
+);
+```
+
+DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
+
+**Cached_minutes recalc:** po insert/update/delete event funkcja `recalcCachedMinutesForResource(id)` chodzi po `path` w górę i przelicza sumę dla każdego przodka (i samego węzła) z `SUM(events.minutes) WHERE resource.path = X OR path LIKE X/%`.
 
 ---
 
@@ -158,7 +193,7 @@ Co MUSI zostać niezmienione przez cały projekt:
 ## Phased rollout (skrót)
 
 0. **Scaffolding** ✓
-1. MVP Local — SQLite, single-user, drzewo + log work
+1. **MVP Local** ✓ — SQLite, single-user, drzewo + log work + context menu
 2. Dashboard — Recharts + filtry
 3. Polish UX — skróty, drag-drop, CSV, dark mode
 4. Supabase Auth + single-user cloud sync

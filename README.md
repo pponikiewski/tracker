@@ -4,7 +4,7 @@ Multi-tenant desktop time tracker. Tauri 2 + React 19 + Tailwind v4 + Supabase (
 
 ## Status
 
-**Faza 0 — Scaffolding (DONE).** Faza 1 (MVP local SQLite) — next.
+**Faza 1 — MVP Local (DONE).** Faza 2 (Dashboard) — next.
 
 Pełny roadmap: `CLAUDE.md` → sekcja "Phased rollout".
 
