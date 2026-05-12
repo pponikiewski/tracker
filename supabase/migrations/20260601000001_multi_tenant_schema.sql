@@ -117,8 +117,9 @@ CREATE POLICY "workspace_update_delete" ON workspaces
 
 -- 14. Polityki RLS: workspace_memberships
 DROP POLICY IF EXISTS "wm_select" ON workspace_memberships;
+-- Direct check on user_id to avoid recursive call to is_workspace_member
 CREATE POLICY "wm_select" ON workspace_memberships
-  FOR SELECT USING (is_workspace_member(workspace_id));
+  FOR SELECT USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "wm_owner_write" ON workspace_memberships;
 CREATE POLICY "wm_owner_write" ON workspace_memberships
