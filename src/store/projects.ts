@@ -13,6 +13,7 @@ import {
   type CreateEventInput,
 } from "@/lib/db/queries";
 import { buildTree } from "@/lib/utils/tree";
+import { useWorkspaceStore } from "@/store/workspace";
 
 interface ProjectsState {
   resources: Resource[];
@@ -32,7 +33,7 @@ interface ProjectsState {
   deleteSubtree: (id: string) => Promise<void>;
   liftAndDelete: (id: string) => Promise<void>;
   detachAsProjects: (id: string) => Promise<void>;
-  logTime: (input: CreateEventInput) => Promise<void>;
+  logTime: (input: Omit<CreateEventInput, "workspaceId">) => Promise<void>;
 }
 
 export const useProjects = create<ProjectsState>((set, get) => ({
@@ -43,9 +44,14 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   error: null,
 
   refresh: async () => {
+    const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+    if (activeWorkspaceId === null) {
+      set({ resources: [], tree: [], loading: false, error: null });
+      return;
+    }
     set({ loading: true, error: null });
     try {
-      const resources = await listActiveResources();
+      const resources = await listActiveResources(activeWorkspaceId);
       set({ resources, tree: buildTree(resources), loading: false });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e), loading: false });
@@ -60,12 +66,16 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   },
 
   addProject: async (name) => {
-    await createResource({ parentId: null, name, type: "project" });
+    const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+    if (!workspaceId) return;
+    await createResource({ parentId: null, name, type: "project", workspaceId });
     await get().refresh();
   },
 
   addChild: async (parentId, name, type) => {
-    await createResource({ parentId, name, type });
+    const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+    if (!workspaceId) return;
+    await createResource({ parentId, name, type, workspaceId });
     set((s) => ({ expandedIds: new Set([...s.expandedIds, parentId]) }));
     await get().refresh();
   },
@@ -101,7 +111,9 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   },
 
   logTime: async (input) => {
-    await createEvent(input);
+    const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+    if (!workspaceId) return;
+    await createEvent({ ...input, workspaceId });
     await get().refresh();
   },
 }));

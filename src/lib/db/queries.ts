@@ -20,10 +20,11 @@ async function withTx<T>(fn: (db: Awaited<ReturnType<typeof getDb>>) => Promise<
   }
 }
 
-export async function listActiveResources(): Promise<Resource[]> {
+export async function listActiveResources(workspaceId: string): Promise<Resource[]> {
   const db = await getDb();
   return db.select<Resource[]>(
-    "SELECT * FROM resources WHERE deleted_at IS NULL ORDER BY path",
+    "SELECT * FROM resources WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY path",
+    [workspaceId],
   );
 }
 
@@ -41,6 +42,7 @@ export interface CreateResourceInput {
   name: string;
   type: ResourceType;
   color?: string | null;
+  workspaceId: string;
 }
 
 export async function createResource(input: CreateResourceInput): Promise<string> {
@@ -59,9 +61,9 @@ export async function createResource(input: CreateResourceInput): Promise<string
 
     await db.execute(
       `INSERT INTO resources
-         (id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $7)`,
-      [id, input.parentId, input.name, input.type, input.color ?? null, path, ts],
+         (id, parent_id, name, type, color, path, cached_minutes, workspace_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $8)`,
+      [id, input.parentId, input.name, input.type, input.color ?? null, path, input.workspaceId, ts],
     );
 
     const rows = await db.select<Resource[]>(
@@ -364,6 +366,7 @@ export interface CreateEventInput {
   topics?: string;
   notes?: string;
   report?: string;
+  workspaceId: string;
 }
 
 export async function createEvent(input: CreateEventInput): Promise<string> {
@@ -372,8 +375,8 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
     const ts = now();
     await db.execute(
       `INSERT INTO events
-         (id, resource_id, date, minutes, goal, topics, notes, report, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+         (id, resource_id, date, minutes, goal, topics, notes, report, workspace_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
       [
         id,
         input.resourceId,
@@ -383,6 +386,7 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
         input.topics ?? null,
         input.notes ?? null,
         input.report ?? null,
+        input.workspaceId,
         ts,
       ],
     );

@@ -8,9 +8,23 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 
 ## Current phase
 
-**Faza 4 — Supabase Auth + Single-User Cloud Sync (DONE).** `@supabase/supabase-js` client singleton (null when env vars missing). Zustand `useAuthStore` with `loading | anonymous | authed` states + `SyncStatus`. Header `AuthGate` (Sign in button / email dropdown) + `AuthModal` (Login/Signup tabs, email/password validation). SQLite `sync_outbox` table; every mutation in `queries.ts` enqueues a row in same transaction as write (`withTx` helper). Foreground worker (`src/lib/sync/worker.ts`) flushes every 10s + on visibility change with exponential backoff (`min(2^attempts × 1000, 300000ms)`). Partial flush: success/failure tracked per entity independently. Timestamp validation before push. First login → `runInitialPull` + LWW merge per row (`updated_at` wins) + path rebuild + cached_minutes recalc. RLS in Postgres: `user_id = auth.uid()`. Vitest + fast-check: 12 correctness properties, 60+ tests across 7 test files. Anonymous mode = pełna funkcjonalność Faz 1-3.
+**Faza 5 — Multi-Tenant Schema (DONE).** Model multi-tenant oparty na Workspace'ach. Każdy Resource i Event należy do dokładnie jednego Workspace. Kluczowe zmiany:
 
-**Next: Faza 5 — Multi-tenant schema** (workspaces, ltree, RLS na workspace_id, invites).
+- **Workspace model**: tabele `workspaces` i `workspace_memberships` w SQLite i Postgres; kolumna `workspace_id` w `resources` i `events`
+- **Local_Personal_Workspace**: stabilne UUID generowane raz, przechowywane w `kv_store` (SQLite), nigdy nie synchronizowane z Supabase — używane w trybie anonimowym
+- **Personal_Workspace**: tworzony automatycznie przy pierwszym logowaniu (`name = "My workspace"`) przez `ensurePersonalWorkspace()` w `pull.ts`
+- **ltree w Postgres**: migracja `path TEXT → ltree` z indeksem GiST; konwersja przez `pathToLtree`/`ltreeToPath` w `src/lib/utils/ltree.ts` (zamiana `-↔_` i `/↔.`)
+- **RLS na workspace_id**: funkcja `is_workspace_member(workspace_id UUID)` zastępuje `user_id = auth.uid()`; polityki na `workspaces`, `workspace_memberships`, `resources`, `events`, `invites`
+- **Sync outbox**: rozszerzony o encje `'workspace'` i `'workspace_membership'`; `mapWorkspaceToCloud` (bez `user_id`, workspace ma `owner_id`); `workspace_membership` z `op='delete'` → `.delete().match()`
+- **Initial Pull**: workspace'y pobierane PRZED resources/events (FK constraint); błąd fetcha workspace'ów → stop (nie pobiera resources/events)
+- **WorkspaceStore** (`src/store/workspace.ts`): Zustand store z pełnym CRUD, `setActiveWorkspace` + `localStorage`, `restoreActiveWorkspace`, `removeMember` (Supabase first, SQLite second), invite management
+- **Invite flow**: tabela `invites` tylko w Supabase (efemeryczne); token UUID, 72h expiry; `InviteAcceptView` z URL token detection
+- **UI**: `WorkspaceSwitcher` w headerze (anonymous/single/multi mode), `WorkspaceSettingsPanel` (role-based visibility), `WorkspaceCreateModal`, `InviteAcceptView`
+- **SQLite migration**: `SCHEMA_V5_SQL` w `schema.ts`; `runPhase5Migration()` w `connection.ts` (idempotentna przez `PRAGMA table_info`); odtworzenie `sync_outbox` przez CREATE/INSERT/DROP/RENAME (SQLite nie obsługuje ALTER COLUMN)
+- **Postgres migration**: `supabase/migrations/20260601000001_multi_tenant_schema.sql` — ltree extension, workspaces, workspace_memberships, backfill, workspace_id w resources/events, invites, RLS
+- **Testy PBT**: 8 nowych właściwości (Properties 1–4, 9, 10, 13) — ltree round-trip, pathToLtree correctness, error rejection, workspace name validation, LWW merge dla workspace'ów, timestamp conversion, outbox collapse
+
+**Next: Faza 6 — Team features** (assignments, avatary).
 
 ---
 
@@ -120,22 +134,24 @@ tracker/
 └── package.json
 ```
 
-Aktualne (Fazy 1-4):
+Aktualne (Fazy 1-5):
 - `src/components/Tree/` — `TreeView`, `TreeNode`
 - `src/components/Dashboard/` — `DashboardView`, `StatsCard`, `ProjectsPieChart`, `DailyBarChart`
 - `src/components/` — `ContextMenu`, `PromptModal`, `ColorPickerModal`, `LogWorkModal`, `ProjectsView`
 - `src/components/Auth/` — `AuthGate`, `AuthModal`, `SyncStatusBadge`, `SyncStatusModal`, `validation.ts`
-- `src/lib/db/` — `schema.ts`, `types.ts`, `connection.ts`, `queries.ts` (`listEventsInRange`)
-- `src/lib/utils/` — `time.ts` (parser + format), `tree.ts` (buildTree, path helpers), `uuid.ts`
-- `src/lib/analytics/aggregate.ts` — `aggregate`, `daysAgoIso`, `fillDailyGaps`, `rootIdOfPath`
-- `src/lib/utils/csv.ts` — `eventsToCsv`, `downloadCsv` (BOM, RFC-style escaping)
-- `src/lib/hooks/useEventsRange.ts` — async fetch hook (loading/error/events)
-- `src/lib/sync/` — `merge.ts`, `outbox.ts`, `worker.ts`, `pull.ts`, `types.ts`
-- `src/lib/supabase.ts` — Supabase client singleton (null when env vars missing)
-- `src/store/projects.ts` — Zustand store (resources, tree, expansion, CRUD + `rename` + `move`)
-- `src/store/auth.ts` — Zustand auth + syncStatus store
-- `supabase/migrations/` — Postgres schema + RLS
-- `src/test/setup.ts` + `vitest.config.ts` — test infrastructure
+- `src/components/Workspace/` — `WorkspaceSwitcher`, `WorkspaceSettingsPanel`, `WorkspaceCreateModal`, `InviteAcceptView`
+- `src/lib/db/` — `schema.ts` (SCHEMA_SQL + SCHEMA_V5_SQL), `types.ts`, `connection.ts` (runPhase5Migration), `queries.ts`, `workspaceQueries.ts`
+- `src/lib/utils/` — `time.ts`, `tree.ts`, `uuid.ts`, `ltree.ts` (pathToLtree, ltreeToPath)
+- `src/lib/analytics/aggregate.ts`
+- `src/lib/utils/csv.ts`
+- `src/lib/hooks/useEventsRange.ts`
+- `src/lib/sync/` — `merge.ts`, `outbox.ts`, `worker.ts` (workspace entities), `pull.ts` (ensurePersonalWorkspace), `types.ts`
+- `src/lib/supabase.ts`
+- `src/store/projects.ts` — workspace-scoped queries
+- `src/store/auth.ts`
+- `src/store/workspace.ts` — WorkspaceStore (Zustand)
+- `supabase/migrations/` — `20260512000001_init.sql` (Faza 4), `20260601000001_multi_tenant_schema.sql` (Faza 5)
+- `src/test/setup.ts` + `vitest.config.ts`
 
 Plan future folders (kolejne fazy):
 
@@ -229,8 +245,8 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 2. **Dashboard** ✓ — Recharts (Pie/Bar) + filtry data + projekty + stats cards
 3. **Polish UX** ✓ — code-split, skróty klawiszowe, inline rename, drag-drop, CSV export
 4. **Supabase Auth + single-user cloud sync** ✓ — outbox + LWW merge + RLS + Vitest PBT
-5. Multi-tenant schema — workspaces, ltree, RLS
-6. Team features — invites, assignments, avatary
+5. **Multi-tenant schema** ✓ — workspaces, ltree, RLS na workspace_id, invites, WorkspaceStore, UI
+6. Team features — assignments, avatary
 7. Realtime + presence
 8. Offline-first hardening
 9. Build + release — installer, auto-updater, CI

@@ -37,6 +37,7 @@ export function SyncStatusBadge() {
     cls += ' border-amber-500 text-amber-400';
   }
   // Priority 5: synced (within 60s of last sync)
+  // eslint-disable-next-line react-hooks/purity
   else if (lastSyncAt && Date.now() - lastSyncAt < 60_000) {
     label = '✓ Synced';
     cls += ' border-green-600 text-green-500';

@@ -23,7 +23,12 @@ export function SyncStatusModal({ onClose }: Props) {
     setErrors(await listRecentErrors(db));
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    getDb()
+      .then((db) => listRecentErrors(db))
+      .then((rows) => setErrors(rows))
+      .catch(() => {/* ignore */});
+  }, []);
 
   // Req 11.3: reset next_retry_at FIRST so rows in backoff window are picked up, THEN tick
   const onRetry = async () => {

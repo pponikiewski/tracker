@@ -4,7 +4,8 @@ import { useAuthStore } from '@/store/auth';
 import { lwwMerge } from './merge';
 import { enqueue } from './outbox';
 import { recalcCachedMinutesForResource } from '@/lib/db/queries';
-import type { Resource, TimeEvent } from '@/lib/db/types';
+import type { Resource, TimeEvent, Workspace, WorkspaceMembership } from '@/lib/db/types';
+import { ltreeToPath } from '@/lib/utils/ltree';
 import { tick } from './worker';
 
 const pulledForUser = new Set<string>();
@@ -19,7 +20,8 @@ function cloudToLocalResource(c: Record<string, unknown>): Resource {
     name: c.name as string,
     type: c.type as Resource['type'],
     color: (c.color as string | null) ?? null,
-    path: c.path as string,
+    // Req 5.4: convert ltree path back to materialized path (slash-separated UUIDs)
+    path: ltreeToPath(c.path as string),
     cached_minutes: (c.cached_minutes as number) ?? 0,
     created_at: toMs(c.created_at),
     updated_at: toMs(c.updated_at),
@@ -41,6 +43,78 @@ function cloudToLocalEvent(c: Record<string, unknown>): TimeEvent {
     updated_at: toMs(c.updated_at),
     deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
   };
+}
+
+// Req 2.1, 2.2: convert cloud workspace row (ISO timestamps) to local Workspace (Unix ms)
+function cloudToLocalWorkspace(c: Record<string, unknown>): Workspace {
+  return {
+    id: c.id as string,
+    name: c.name as string,
+    owner_id: c.owner_id as string,
+    created_at: toMs(c.created_at),
+    updated_at: toMs(c.updated_at),
+    deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
+  };
+}
+
+// Req 2.2: convert cloud membership row (ISO timestamps) to local WorkspaceMembership (Unix ms)
+function cloudToLocalMembership(c: Record<string, unknown>): WorkspaceMembership {
+  return {
+    workspace_id: c.workspace_id as string,
+    user_id: c.user_id as string,
+    role: c.role as WorkspaceMembership['role'],
+    joined_at: toMs(c.joined_at),
+  };
+}
+
+/**
+ * Ensures a Personal_Workspace exists in Supabase for the given user.
+ * If one already exists, returns its id.
+ * If none exists, creates one (with owner membership) and returns the new id.
+ * Throws on creation failure — caller should set error status.
+ * Requirements: 2.1, 2.6
+ */
+export async function ensurePersonalWorkspace(userId: string): Promise<string> {
+  if (!supabase) throw new Error('Supabase not configured');
+
+  // Check if user already has a workspace
+  const { data: existing, error: fetchErr } = await supabase
+    .from('workspaces')
+    .select('id')
+    .eq('owner_id', userId)
+    .is('deleted_at', null)
+    .limit(1);
+
+  if (fetchErr) throw new Error(fetchErr.message);
+
+  if (existing && existing.length > 0 && existing[0]) {
+    return existing[0].id as string;
+  }
+
+  // No workspace found — create Personal_Workspace
+  const newId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const { error: wsErr } = await supabase.from('workspaces').insert({
+    id: newId,
+    name: 'My workspace',
+    owner_id: userId,
+    created_at: now,
+    updated_at: now,
+  });
+
+  if (wsErr) throw new Error(wsErr.message);
+
+  const { error: memErr } = await supabase.from('workspace_memberships').insert({
+    workspace_id: newId,
+    user_id: userId,
+    role: 'owner',
+    joined_at: now,
+  });
+
+  if (memErr) throw new Error(memErr.message);
+
+  return newId;
 }
 
 // Req 8.7: rebuild materialized paths from parent_id chains
@@ -80,6 +154,112 @@ export async function runInitialPull(userId: string): Promise<void> {
   const auth = useAuthStore.getState();
   auth.setSyncStatus({ kind: 'initial-pull' });
 
+  // Step 1: Ensure Personal_Workspace exists in Supabase (Req 2.1, 2.6)
+  try {
+    await ensurePersonalWorkspace(userId);
+  } catch (e) {
+    auth.setSyncStatus({
+      kind: 'error',
+      message: e instanceof Error ? e.message : 'failed to provision workspace',
+    });
+    return;
+  }
+
+  // Step 2: Fetch workspaces + workspace_memberships in parallel (Req 7.5)
+  const [{ data: cloudWS, error: errWS }, { data: cloudMem, error: errMem }] =
+    await Promise.all([
+      supabase.from('workspaces').select('*'),
+      supabase.from('workspace_memberships').select('*'),
+    ]);
+
+  // Step 3: If workspace fetch fails — set error and stop (do NOT fetch resources/events)
+  if (errWS || errMem) {
+    auth.setSyncStatus({ kind: 'error', message: (errWS ?? errMem)!.message });
+    return;
+  }
+
+  const db = await getDb();
+
+  // Step 4: LWW merge workspaces → write to SQLite (Req 2.2, 7.6)
+  const localWS = await db.select<Workspace[]>(`SELECT * FROM workspaces`);
+  const cloudWSLoc = (cloudWS ?? []).map((c) =>
+    cloudToLocalWorkspace(c as Record<string, unknown>),
+  );
+  const wsMerge = lwwMerge(localWS, cloudWSLoc);
+
+  try {
+    for (const w of wsMerge.writeSqlite) {
+      await db.execute(
+        `INSERT INTO workspaces (id, name, owner_id, created_at, updated_at, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT(id) DO UPDATE SET
+           name=excluded.name, owner_id=excluded.owner_id,
+           created_at=excluded.created_at, updated_at=excluded.updated_at,
+           deleted_at=excluded.deleted_at`,
+        [w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.deleted_at],
+      );
+    }
+    for (const w of wsMerge.pushOutbox) {
+      await enqueue(db, 'workspace', w.id, 'upsert', w as unknown as Record<string, unknown>);
+    }
+  } catch (e) {
+    auth.setSyncStatus({
+      kind: 'error',
+      message: e instanceof Error ? e.message : 'workspace write failed',
+    });
+    return;
+  }
+
+  // Step 5: LWW merge memberships → write to SQLite (Req 2.2)
+  const localMem = await db.select<WorkspaceMembership[]>(`SELECT * FROM workspace_memberships`);
+  const cloudMemLoc = (cloudMem ?? []).map((c) =>
+    cloudToLocalMembership(c as Record<string, unknown>),
+  );
+
+  // WorkspaceMembership uses composite key (workspace_id, user_id) — synthesise an id for lwwMerge
+  // updated_at is required by MergeRow; we use joined_at as the conflict-resolution timestamp
+  type MembershipWithId = WorkspaceMembership & { id: string; updated_at: number };
+  const localMemWithId: MembershipWithId[] = localMem.map((m) => ({
+    ...m,
+    id: `${m.workspace_id}:${m.user_id}`,
+    updated_at: m.joined_at,
+  }));
+  const cloudMemWithId: MembershipWithId[] = cloudMemLoc.map((m) => ({
+    ...m,
+    id: `${m.workspace_id}:${m.user_id}`,
+    updated_at: m.joined_at,
+  }));
+
+  const memMerge = lwwMerge<MembershipWithId>(localMemWithId, cloudMemWithId);
+
+  try {
+    for (const m of memMerge.writeSqlite) {
+      await db.execute(
+        `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+           role=excluded.role, joined_at=excluded.joined_at`,
+        [m.workspace_id, m.user_id, m.role, m.joined_at],
+      );
+    }
+    for (const m of memMerge.pushOutbox) {
+      await enqueue(
+        db,
+        'workspace_membership',
+        `${m.workspace_id}:${m.user_id}`,
+        'upsert',
+        m as unknown as Record<string, unknown>,
+      );
+    }
+  } catch (e) {
+    auth.setSyncStatus({
+      kind: 'error',
+      message: e instanceof Error ? e.message : 'membership write failed',
+    });
+    return;
+  }
+
+  // Step 6: Fetch resources + events (existing logic)
   const [{ data: cloudR, error: errR }, { data: cloudE, error: errE }] = await Promise.all([
     supabase.from('resources').select('*'),
     supabase.from('events').select('*'),
@@ -91,7 +271,7 @@ export async function runInitialPull(userId: string): Promise<void> {
     return;
   }
 
-  const db = await getDb();
+  // Step 7: LWW merge resources/events → write to SQLite, rebuild paths, recalc, reload
   const localR = await db.select<Resource[]>(`SELECT * FROM resources`);
   const localE = await db.select<TimeEvent[]>(`SELECT * FROM events`);
 

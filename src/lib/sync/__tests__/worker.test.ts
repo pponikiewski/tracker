@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { collapseDuplicates, isValidTimestamp, mapToCloud } from '../worker';
+import { collapseDuplicates, isValidTimestamp, mapToCloud, mapWorkspaceToCloud } from '../worker';
 import type { Entity } from '../types';
 
 interface ReadyRow {
@@ -230,5 +230,126 @@ describe('collapseDuplicates examples', () => {
     ]);
     expect(r.perEntity.resource[0]?.id).toBe(5);
     expect(r.supersededIds.resource.sort()).toEqual([1, 3]);
+  });
+});
+
+// Feature: multi-tenant-schema, Property 10: Konwersja znacznikow czasu workspace
+// Validates: Requirements 7.4
+describe('Property 10: Konwersja znacznikow czasu workspace', () => {
+  const ISO_8601_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+  it('mapWorkspaceToCloud produkuje poprawne ISO 8601 dla created_at i updated_at', () => {
+    fc.assert(
+      fc.property(
+        fc.record({
+          id: fc.uuid(),
+          name: fc.string({ minLength: 1, maxLength: 50 }),
+          owner_id: fc.uuid(),
+          created_at: fc.integer({ min: 1, max: 2_000_000_000_000 }),
+          updated_at: fc.integer({ min: 1, max: 2_000_000_000_000 }),
+          deleted_at: fc.option(fc.integer({ min: 1, max: 2_000_000_000_000 }), { nil: null }),
+        }),
+        (data) => {
+          const result = mapWorkspaceToCloud(data as Record<string, unknown>);
+
+          // created_at i updated_at muszą być poprawnymi ISO 8601
+          expect(typeof result.created_at).toBe('string');
+          expect(typeof result.updated_at).toBe('string');
+          expect(result.created_at as string).toMatch(ISO_8601_REGEX);
+          expect(result.updated_at as string).toMatch(ISO_8601_REGEX);
+
+          // Wartości muszą być parsowalne i odpowiadać oryginałowi
+          expect(Date.parse(result.created_at as string)).toBe(data.created_at);
+          expect(Date.parse(result.updated_at as string)).toBe(data.updated_at);
+
+          // deleted_at: konwertowane gdy non-null, null gdy null
+          if (data.deleted_at != null) {
+            expect(typeof result.deleted_at).toBe('string');
+            expect(result.deleted_at as string).toMatch(ISO_8601_REGEX);
+            expect(Date.parse(result.deleted_at as string)).toBe(data.deleted_at);
+          } else {
+            expect(result.deleted_at).toBeNull();
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+});
+
+// Feature: multi-tenant-schema, Property 13: Collapse duplikatow w outbox dla workspace
+// Validates: Requirements 7.1, 7.2
+describe('Property 13: Collapse duplikatow w outbox dla workspace', () => {
+  type WorkspaceEntity = 'workspace' | 'workspace_membership';
+
+  const mkWorkspaceRow = (id: number, entity: WorkspaceEntity, entity_id: string): ReadyRow => ({
+    id,
+    entity: entity as Entity,
+    entity_id,
+    op: 'upsert',
+    payload: '{}',
+    attempts: 0,
+  });
+
+  it('zachowuje dokładnie jeden wiersz na unikalną parę (entity, entity_id) — ten z najwyższym id', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            id: fc.integer({ min: 1, max: 10000 }),
+            entity: fc.constantFrom<WorkspaceEntity>('workspace', 'workspace_membership'),
+            entity_id: fc.constantFrom('ws-1', 'ws-2', 'ws-3'),
+          }),
+          { minLength: 1, maxLength: 30 },
+        ),
+        (rawRows) => {
+          // Deduplicate ids to avoid ambiguity
+          const seen = new Set<number>();
+          const rows: ReadyRow[] = rawRows
+            .filter((r) => {
+              if (seen.has(r.id)) return false;
+              seen.add(r.id);
+              return true;
+            })
+            .map((r) => mkWorkspaceRow(r.id, r.entity, r.entity_id));
+
+          const result = collapseDuplicates(rows);
+
+          const workspaceRows = result.perEntity.workspace;
+          const membershipRows = result.perEntity.workspace_membership;
+          const allKept = [...workspaceRows, ...membershipRows];
+
+          // Każda para (entity, entity_id) pojawia się dokładnie raz
+          const keys = new Set<string>();
+          for (const r of allKept) {
+            const k = `${r.entity}:${r.entity_id}`;
+            expect(keys.has(k)).toBe(false);
+            keys.add(k);
+          }
+
+          // Zachowany wiersz musi mieć najwyższe id dla swojej pary
+          for (const r of allKept) {
+            const k = `${r.entity}:${r.entity_id}`;
+            const allForKey = rows.filter((x) => `${x.entity}:${x.entity_id}` === k);
+            const maxId = Math.max(...allForKey.map((x) => x.id));
+            expect(r.id).toBe(maxId);
+          }
+
+          // Wszystkie wiersze wejściowe są albo zachowane albo w supersededIds
+          const supersededWorkspace = new Set(result.supersededIds.workspace);
+          const supersededMembership = new Set(result.supersededIds.workspace_membership);
+          const keptIds = new Set(allKept.map((r) => r.id));
+
+          for (const r of rows) {
+            if (r.entity === 'workspace') {
+              expect(keptIds.has(r.id) || supersededWorkspace.has(r.id)).toBe(true);
+            } else if (r.entity === 'workspace_membership') {
+              expect(keptIds.has(r.id) || supersededMembership.has(r.id)).toBe(true);
+            }
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
   });
 });

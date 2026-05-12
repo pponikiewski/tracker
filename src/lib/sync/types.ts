@@ -1,4 +1,4 @@
-export type Entity = 'resource' | 'event';
+export type Entity = 'resource' | 'event' | 'workspace' | 'workspace_membership';
 export type Op = 'upsert' | 'delete';
 
 export interface OutboxPayload {

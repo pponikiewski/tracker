@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { AuthGate } from "@/components/Auth/AuthGate";
 import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { ProjectsView } from "./components/ProjectsView";
+import { InviteAcceptView, getInviteTokenFromUrl } from "@/components/Workspace/InviteAcceptView";
+import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
 
 const DashboardView = lazy(() =>
   import("./components/Dashboard/DashboardView").then((m) => ({ default: m.DashboardView })),
@@ -11,6 +13,7 @@ type Tab = "projects" | "dashboard";
 
 function App() {
   const [tab, setTab] = useState<Tab>("projects");
+  const inviteToken = getInviteTokenFromUrl();
 
   // Global keyboard shortcuts.
   useEffect(() => {
@@ -31,6 +34,7 @@ function App() {
 
   return (
     <div className="flex h-full flex-col bg-neutral-950">
+      {inviteToken && <InviteAcceptView token={inviteToken} />}
       <nav className="flex shrink-0 items-center gap-1 border-b border-neutral-800 bg-neutral-900 px-3 py-1.5">
         <span className="mr-3 text-xs font-semibold tracking-tight text-neutral-100">
           tracker
@@ -42,6 +46,7 @@ function App() {
           Dashboard
         </TabButton>
         <div className="ml-auto flex items-center gap-2">
+          <WorkspaceSwitcher />
           <SyncStatusBadge />
           <AuthGate />
         </div>

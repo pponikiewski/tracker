@@ -85,6 +85,95 @@ describe('Property 2: LWW Merge Idempotence', () => {
   });
 });
 
+// Feature: multi-tenant-schema, Property 9: LWW Merge dla workspace'ow
+// Validates: Requirements 7.6
+describe('Property 9: LWW Merge dla workspace\'ow', () => {
+  interface WorkspaceRow {
+    id: string;
+    updated_at: number;
+    name?: string;
+    owner_id?: string;
+  }
+
+  const workspaceArb = fc.record({
+    id: fc.uuid(),
+    updated_at: fc.integer({ min: 1, max: 2_000_000_000_000 }),
+    name: fc.string({ minLength: 1, maxLength: 50 }),
+    owner_id: fc.uuid(),
+  });
+
+  const workspaceListArb = fc.array(workspaceArb, { minLength: 0, maxLength: 20 })
+    .map((arr) => {
+      const seen = new Set<string>();
+      return arr.filter((r) => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
+    });
+
+  it('cloud-only → writeSqlite; local-only → pushOutbox; konflikt → wyższy updated_at wygrywa; równe → brak akcji', () => {
+    fc.assert(
+      fc.property(workspaceListArb, workspaceListArb, (local: WorkspaceRow[], cloud: WorkspaceRow[]) => {
+        const result = lwwMerge(local, cloud);
+        const localMap = new Map(local.map((r) => [r.id, r]));
+        const cloudMap = new Map(cloud.map((r) => [r.id, r]));
+
+        // cloud-only rows must go to writeSqlite
+        for (const r of result.writeSqlite) {
+          const l = localMap.get(r.id);
+          const c = cloudMap.get(r.id);
+          if (!l && c) continue; // cloud-only: OK
+          if (l && c) {
+            // cloud wins: cloud updated_at must be strictly greater
+            expect(c.updated_at).toBeGreaterThan(l.updated_at);
+            continue;
+          }
+          throw new Error(`writeSqlite contains local-only workspace ${r.id}`);
+        }
+
+        // local-only rows must go to pushOutbox
+        for (const r of result.pushOutbox) {
+          const l = localMap.get(r.id);
+          const c = cloudMap.get(r.id);
+          if (l && !c) continue; // local-only: OK
+          if (l && c) {
+            // local wins: local updated_at must be strictly greater
+            expect(l.updated_at).toBeGreaterThan(c.updated_at);
+            continue;
+          }
+          throw new Error(`pushOutbox contains cloud-only workspace ${r.id}`);
+        }
+
+        // Equal timestamps → neither output
+        for (const l of local) {
+          const c = cloudMap.get(l.id);
+          if (!c) continue;
+          if (l.updated_at === c.updated_at) {
+            expect(result.writeSqlite.find((r) => r.id === l.id)).toBeUndefined();
+            expect(result.pushOutbox.find((r) => r.id === l.id)).toBeUndefined();
+          }
+        }
+
+        // Every cloud-only row must appear in writeSqlite
+        for (const c of cloud) {
+          if (!localMap.has(c.id)) {
+            expect(result.writeSqlite.find((r) => r.id === c.id)).toBeDefined();
+          }
+        }
+
+        // Every local-only row must appear in pushOutbox
+        for (const l of local) {
+          if (!cloudMap.has(l.id)) {
+            expect(result.pushOutbox.find((r) => r.id === l.id)).toBeDefined();
+          }
+        }
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
+
 describe('Example-based unit tests', () => {
   it('local-only → pushOutbox', () => {
     const r = lwwMerge<R>([{ id: 'a', updated_at: 1 }], []);

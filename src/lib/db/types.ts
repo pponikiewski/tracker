@@ -64,7 +64,34 @@ export function canParent(parent: ResourceType, child: ResourceType): boolean {
   return false;
 }
 
-export type OutboxEntity = 'resource' | 'event';
+export interface Workspace {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+export interface WorkspaceMembership {
+  workspace_id: string;
+  user_id: string;
+  role: 'owner' | 'member';
+  joined_at: number;
+}
+
+export interface Invite {
+  id: string;
+  workspace_id: string;
+  invited_email: string;
+  invited_by: string;
+  token: string;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+}
+
+export type OutboxEntity = 'resource' | 'event' | 'workspace' | 'workspace_membership';
 export type OutboxOp = 'upsert' | 'delete';
 
 export interface OutboxRow {
