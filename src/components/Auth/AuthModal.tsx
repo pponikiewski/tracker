@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
+import { validateEmail, validatePassword } from './validation';
 
 type Tab = 'login' | 'signup';
 
@@ -13,18 +14,6 @@ export function AuthModal({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const signIn = useAuthStore((s) => s.signIn);
   const signUp = useAuthStore((s) => s.signUp);
-
-  const validateEmail = (v: string): string | null => {
-    if (!v.includes('@')) return 'Email must contain @';
-    if (v.length > 254) return 'Email must be 254 characters or fewer';
-    return null;
-  };
-
-  const validatePassword = (v: string): string | null => {
-    if (v.length < 8) return 'Password must be at least 8 characters';
-    if (v.length > 128) return 'Password must be 128 characters or fewer';
-    return null;
-  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
