@@ -35,18 +35,26 @@ export function AuthModal({ onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96 shadow-xl">
-        <div className="flex gap-4 mb-4 border-b">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+      <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 w-96 shadow-2xl">
+        <div className="flex gap-1 mb-5 border-b border-neutral-700">
           <button
             type="button"
-            className={`pb-2 ${tab === 'login' ? 'border-b-2 border-blue-500 font-medium' : ''}`}
+            className={`pb-2 px-1 text-sm transition-colors ${
+              tab === 'login'
+                ? 'border-b-2 border-blue-500 text-neutral-100 font-medium'
+                : 'text-neutral-500 hover:text-neutral-300'
+            }`}
             onClick={() => { setTab('login'); setError(null); }}>
             Login
           </button>
           <button
             type="button"
-            className={`pb-2 ${tab === 'signup' ? 'border-b-2 border-blue-500 font-medium' : ''}`}
+            className={`pb-2 px-1 text-sm transition-colors ${
+              tab === 'signup'
+                ? 'border-b-2 border-blue-500 text-neutral-100 font-medium'
+                : 'text-neutral-500 hover:text-neutral-300'
+            }`}
             onClick={() => { setTab('signup'); setError(null); }}>
             Sign up
           </button>
@@ -57,7 +65,7 @@ export function AuthModal({ onClose }: Props) {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-blue-500 transition-colors"
             autoComplete="email"
           />
           <input
@@ -65,18 +73,21 @@ export function AuthModal({ onClose }: Props) {
             placeholder="Password (min 8)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-blue-500 transition-colors"
             autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
           />
-          {error && <p className="text-red-600 text-sm" role="alert">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1 border rounded text-sm">
+          {error && <p className="text-red-400 text-xs" role="alert">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs border border-neutral-700 text-neutral-400 rounded hover:bg-neutral-800 hover:text-neutral-200 transition-colors">
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
               {busy ? '…' : tab === 'login' ? 'Login' : 'Create account'}
             </button>
           </div>

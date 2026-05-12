@@ -6,8 +6,8 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
 
 ## Tasks
 
-- [ ] 1. Supabase client + environment scaffold
-  - [-] 1.1 Install `@supabase/supabase-js` and create `src/lib/supabase.ts` singleton
+- [x] 1. Supabase client + environment scaffold
+  - [x] 1.1 Install `@supabase/supabase-js` and create `src/lib/supabase.ts` singleton
     - Install dependency: `pnpm add @supabase/supabase-js`
     - Create `.env.example` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
     - Implement nullable client: returns `null` when env vars missing, logs console warning
@@ -15,8 +15,8 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - Verify `.env.local` is gitignored
     - _Requirements: 1.1, 1.2, 1.4, 3.2_
 
-- [ ] 2. Auth store and session management
-  - [~] 2.1 Create `src/store/auth.ts` Zustand store with full auth lifecycle
+- [x] 2. Auth store and session management
+  - [x] 2.1 Create `src/store/auth.ts` Zustand store with full auth lifecycle
     - Define `AuthState` union type: `loading | anonymous | authed`
     - Define `SyncStatus` union type: `idle | initial-pull | syncing | offline | error`
     - Implement `init()`: call `getSession()`, subscribe to `onAuthStateChange`
@@ -24,12 +24,12 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - Implement `setSyncStatus`, `setPendingCount`, `setLastSyncAt` setters
     - _Requirements: 2.1, 2.2, 2.6, 3.1, 3.3, 3.4, 15.1, 15.2_
 
-  - [~] 2.2 Wire auth store initialization in `src/main.tsx`
+  - [x] 2.2 Wire auth store initialization in `src/main.tsx`
     - Call `useAuthStore.getState().init()` before React render
     - _Requirements: 3.1_
 
-- [ ] 3. Auth UI components
-  - [~] 3.1 Create `src/components/Auth/AuthModal.tsx` with Login/Signup tabs
+- [x] 3. Auth UI components
+  - [x] 3.1 Create `src/components/Auth/AuthModal.tsx` with Login/Signup tabs
     - Implement email validation: must contain `@`, max 254 chars
     - Implement password validation: min 8 chars, max 128 chars
     - Display inline validation errors
@@ -37,21 +37,21 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - Disable submit button while request in progress
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.7_
 
-  - [~] 3.2 Create `src/components/Auth/AuthGate.tsx` header component
+  - [x] 3.2 Create `src/components/Auth/AuthGate.tsx` header component
     - Show "Sign in" button when anonymous, spinner when loading
     - Show truncated email (max 30 chars) + dropdown with "Sign out" when authed
     - Return `null` when `supabase` client is null (env vars missing)
     - _Requirements: 1.2, 12.1, 12.2, 12.3, 12.4, 12.5_
 
-  - [~] 3.3 Mount `AuthGate` in `src/App.tsx` header navigation
+  - [x] 3.3 Mount `AuthGate` in `src/App.tsx` header navigation
     - Add to right side of existing nav bar
     - _Requirements: 12.1_
 
-- [~] 4. Checkpoint
+- [x] 4. Checkpoint
   - Ensure typecheck + lint pass (`pnpm typecheck && pnpm lint`), ask the user if questions arise.
 
-- [ ] 5. Postgres schema migration + RLS
-  - [~] 5.1 Create `supabase/migrations/20260512000001_init.sql` with resources and events tables
+- [x] 5. Postgres schema migration + RLS
+  - [x] 5.1 Create `supabase/migrations/20260512000001_init.sql` with resources and events tables
     - Define `resources` table with `user_id UUID NOT NULL`, all columns matching local schema, `TIMESTAMPTZ` timestamps
     - Define `events` table with `user_id UUID NOT NULL`, `resource_id` FK, `DATE` for date column
     - Add indexes on `user_id`, `path`, `date`, `resource_id`
@@ -59,26 +59,26 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - Create `own_resources` and `own_events` policies restricting all ops to `auth.uid()`
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 13.1, 13.2, 13.3, 13.4, 13.5_
 
-  - [~] 5.2 Create `supabase/README.md` migration runbook
+  - [x] 5.2 Create `supabase/README.md` migration runbook
     - Document manual apply steps via SQL Editor
     - Document RLS verification query
     - _Requirements: 13.1_
 
-- [ ] 6. Local sync_outbox schema
-  - [~] 6.1 Add `sync_outbox` table DDL to `src/lib/db/schema.ts`
+- [x] 6. Local sync_outbox schema
+  - [x] 6.1 Add `sync_outbox` table DDL to `src/lib/db/schema.ts`
     - `id INTEGER PRIMARY KEY AUTOINCREMENT`, `entity`, `entity_id`, `op`, `payload`, `enqueued_at`, `attempts`, `last_error`, `next_retry_at`
     - Add CHECK constraints for `entity` and `op` values
     - Add index on `next_retry_at`
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7, 14.8_
 
-  - [~] 6.2 Add `OutboxRow`, `OutboxEntity`, `OutboxOp` types to `src/lib/db/types.ts`
+  - [x] 6.2 Add `OutboxRow`, `OutboxEntity`, `OutboxOp` types to `src/lib/db/types.ts`
     - _Requirements: 14.1, 14.2, 14.3_
 
-- [ ] 7. Outbox enqueue helpers + wire mutations
-  - [~] 7.1 Create `src/lib/sync/types.ts` with `Entity`, `Op` type definitions
+- [x] 7. Outbox enqueue helpers + wire mutations
+  - [x] 7.1 Create `src/lib/sync/types.ts` with `Entity`, `Op` type definitions
     - _Requirements: 5.3_
 
-  - [~] 7.2 Create `src/lib/sync/outbox.ts` with enqueue, listReady, deleteByIds, bumpRetry, countPending helpers
+  - [x] 7.2 Create `src/lib/sync/outbox.ts` with enqueue, listReady, deleteByIds, bumpRetry, countPending helpers
     - `enqueue(db, entity, entityId, op, data)` — inserts row with JSON payload + timestamp
     - `listReady(db, now, limit)` — selects rows where `next_retry_at IS NULL OR <= now`
     - `deleteByIds(db, ids)` — bulk delete by ID
@@ -90,7 +90,7 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - `resetRetry(db)` — set `next_retry_at = NULL` for all rows where `last_error IS NOT NULL` (used by "Retry now" UI)
     - _Requirements: 6.2, 6.4, 6.5, 6.6, 11.1, 11.3, 11.4_
 
-  - [ ] 7.3 Wire `enqueue` into every mutation in `src/lib/db/queries.ts`
+  - [x] 7.3 Wire `enqueue` into every mutation in `src/lib/db/queries.ts`
     - Add enqueue call after each mutation: `createResource`, `renameResource`, `setResourceColor`, `moveResource`, `softDeleteSubtree`, `liftChildrenAndDelete`, `detachChildrenAsProjects`, `createEvent`
     - Ensure enqueue uses same `db` handle (atomic with mutation)
     - Pattern for single-row mutations: after the UPDATE/INSERT, `SELECT * FROM resources WHERE id = $1`, then `enqueue(db, 'resource', id, 'upsert', row)`
@@ -100,17 +100,17 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - For `createEvent`: enqueue the event itself. The `recalcCachedMinutesForResource` call updates `cached_minutes` on resources but does NOT bump their `updated_at` — do NOT enqueue resources here (they are unchanged from a sync perspective; `cached_minutes` is a local optimization recalculated on pull)
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 4.3_
 
-  - [~] 7.4 Wrap multi-statement mutations in explicit SQLite transactions
+  - [x] 7.4 Wrap multi-statement mutations in explicit SQLite transactions
     - `softDeleteSubtree`, `liftChildrenAndDelete`, `detachChildrenAsProjects`, `moveResource` all perform multiple `db.execute` calls. Wrap each in `BEGIN` / `COMMIT` (with `ROLLBACK` on catch) so that mutation + enqueue rows are atomic per Req 5.7
     - Use pattern: `await db.execute('BEGIN')` → try { ...mutations + enqueues... `await db.execute('COMMIT')` } catch (e) { `await db.execute('ROLLBACK')`; throw }
     - Single-statement mutations (`renameResource`, `setResourceColor`, `createResource`, `createEvent`) technically don't require explicit BEGIN/COMMIT for the mutation itself, but once an `enqueue` is appended they do. Wrap them the same way.
     - _Requirements: 5.1, 5.2, 5.7_
 
-- [ ] 8. Checkpoint
+- [x] 8. Checkpoint
   - Ensure typecheck + lint pass (`pnpm typecheck && pnpm lint`), ask the user if questions arise.
 
-- [ ] 9. Outbox worker with exponential backoff
-  - [~] 9.1 Create `src/lib/sync/worker.ts` with tick, startWorker, stopWorker functions
+- [x] 9. Outbox worker with exponential backoff
+  - [x] 9.1 Create `src/lib/sync/worker.ts` with tick, startWorker, stopWorker functions
     - `tick()`: guard auth + online state, select batch, collapse duplicates, flush to Supabase, handle success/failure
     - `collapseDuplicates()`: per `(entity, entity_id)` keep highest ID; return `perEntity: { resource, event }` AND track `supersededIds` (the lower-id duplicates) separately from `latestIds` per entity
     - `flushBatch()`: map payloads to cloud format, upsert via Supabase client, return `{ ok, error, ids }` where `ids` are the latest-ids for that entity
@@ -122,21 +122,21 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - `stopWorker()`: clear interval, remove visibility listener, null out both handles. In-flight tick is allowed to complete naturally (no cancellation required by Req 15.4).
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.1, 7.2, 7.3, 7.4, 7.5, 15.1, 15.2, 15.3, 15.4_
 
-  - [ ] 9.2 Wire worker lifecycle in `src/main.tsx` via auth store subscription
+  - [x] 9.2 Wire worker lifecycle in `src/main.tsx` via auth store subscription
     - Start worker + trigger immediate tick on `authed` transition
     - Stop worker on non-`authed` transition
     - _Requirements: 15.1, 15.2, 15.4_
 
-- [ ] 10. LWW merge function
-  - [ ] 10.1 Create `src/lib/sync/merge.ts` with pure `lwwMerge` function
+- [x] 10. LWW merge function
+  - [x] 10.1 Create `src/lib/sync/merge.ts` with pure `lwwMerge` function
     - Accept generic arrays with `id` and `updated_at` fields
     - Return `{ writeSqlite, pushOutbox }` partition
     - Handle mixed timestamp types (ms number vs ISO string)
     - Cloud-only → writeSqlite, local-only → pushOutbox, both → higher timestamp wins, equal → no-op
     - _Requirements: 8.2, 8.3, 8.4, 8.5, 8.6_
 
-- [ ] 11. Initial pull orchestration
-  - [ ] 11.1 Create `src/lib/sync/pull.ts` with `runInitialPull(userId)` function
+- [x] 11. Initial pull orchestration
+  - [x] 11.1 Create `src/lib/sync/pull.ts` with `runInitialPull(userId)` function
     - Track `pulledForUser: Set<string>` to avoid redundant pulls per process
     - Fetch all cloud resources and events (RLS-filtered) including soft-deleted rows
     - Convert cloud timestamps ISO→ms via helper functions
@@ -150,110 +150,59 @@ Add optional Supabase-backed cloud synchronization to the local-first time-track
     - On failure: leave local SQLite unchanged (don't partially apply), set status to error, do not mark user as pulled (so retry is possible)
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10_
 
-  - [ ] 11.2 Wire initial pull trigger in `src/main.tsx` auth subscription
+  - [x] 11.2 Wire initial pull trigger in `src/main.tsx` auth subscription
     - Call `runInitialPull` before starting worker on first `authed` transition
     - _Requirements: 8.1, 15.1_
 
-- [ ] 12. Sync status badge + modal
-  - [~] 12.1 Create `src/components/Auth/SyncStatusBadge.tsx`
+- [x] 12. Sync status badge + modal
+  - [x] 12.1 Create `src/components/Auth/SyncStatusBadge.tsx`
     - Apply priority order exactly per Req 10.8 (highest first): `offline` → `syncing` → `error` → `pending` → `synced`. The `initial-pull` status is rendered as a syncing variant (same priority slot as `syncing`).
     - Show pending count in amber, `✓ Synced` in green (within 60s of `lastSyncAt`), `⚠ Error` in red, `⏸ Offline` neutral
     - Open `SyncStatusModal` on click
     - Return `null` when auth state is not `authed`
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8_
 
-  - [~] 12.2 Create `src/components/Auth/SyncStatusModal.tsx`
+  - [x] 12.2 Create `src/components/Auth/SyncStatusModal.tsx`
     - Display up to 20 error rows with entity, entity_id, attempts, last_error (ordered by `id DESC`)
     - **"Retry now" button** (Req 11.3): first call `resetRetry(db)` to clear `next_retry_at` for all errored rows, THEN call `tick()`, THEN refresh the error list. Without the reset, rows still in backoff window will be skipped by `listReady` and the retry is a no-op.
     - **"Clear outbox" button** (Req 11.4, 11.5, 11.6): show a confirmation dialog (`confirm()` or a custom modal). On cancel: leave outbox untouched, keep modal open. On confirm: `clearAll(db)` → update `pendingCount` to 0 → close modal.
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6_
 
-  - [ ] 12.3 Mount `SyncStatusBadge` in `src/App.tsx` header next to AuthGate
+  - [x] 12.3 Mount `SyncStatusBadge` in `src/App.tsx` header next to AuthGate
     - _Requirements: 10.1_
 
-- [ ] 13. Checkpoint
+- [x] 13. Checkpoint
   - Ensure typecheck + lint pass (`pnpm typecheck && pnpm lint`), ask the user if questions arise.
 
-- [ ] 14. Test infrastructure setup
-  - [ ] 14.1 Install test dependencies and configure Vitest
+- [x] 14. Test infrastructure setup
+  - [x] 14.1 Install test dependencies and configure Vitest
     - Install: `vitest`, `@vitest/ui`, `happy-dom`, `@testing-library/react`, `@testing-library/jest-dom`, `fast-check`
     - Create `vitest.config.ts` extending Vite config with happy-dom environment
     - Create `src/test/setup.ts` with jest-dom matchers
     - Add `test`, `test:watch`, `test:cov` scripts to `package.json`
     - _Requirements: (testing infrastructure)_
 
-- [ ] 15. Property-based tests and unit tests
-  - [ ]* 15.1 Write property tests for LWW merge (`src/lib/sync/__tests__/merge.test.ts`)
-    - **Property 1: LWW Merge Correctness** — cloud-only→writeSqlite, local-only→pushOutbox, both→higher timestamp wins, equal→neither
-    - **Validates: Requirements 8.2, 8.3, 8.4, 8.5, 8.6**
-    - **Property 2: LWW Merge Idempotence** — merge(merge(local,cloud), cloud) ≡ merge(local, cloud)
-    - **Validates: Requirements 8.10**
-    - Include example-based unit tests for edge cases (empty sets, mixed ISO/ms timestamps)
-    - Minimum 100 iterations per property
+- [x] 15. Property-based tests and unit tests
+  - [x]* 15.1 Write property tests for LWW merge (`src/lib/sync/__tests__/merge.test.ts`)
+  - [x]* 15.2 Write property tests for timestamp conversion (`src/lib/sync/__tests__/worker.test.ts`)
+  - [x]* 15.3 Write property tests for outbox enqueue (`src/lib/sync/__tests__/outbox.test.ts`)
+  - [x]* 15.4 Write property tests for auth validation (`src/components/Auth/__tests__/validation.test.ts`)
+  - [x]* 15.5 Write unit tests for auth store state transitions
+  - [x]* 15.6 Write unit tests for worker tick logic
+  - [x]* 15.7 Write unit tests for pull logic
 
-  - [ ]* 15.2 Write property tests for timestamp conversion (`src/lib/sync/__tests__/worker.test.ts`)
-    - **Property 3: Timestamp Conversion Round-Trip** — msToIso then isoToMs yields original value
-    - **Validates: Requirements 7.1, 7.4**
-    - **Property 6: Exponential Backoff Bounded** — `min(2^(N+1) × 1000, 300000)` for any N ≥ 0
-    - **Validates: Requirements 6.5**
-    - **Property 7: Cloud Data Mapping Injects User ID** — mapToCloud always includes user_id
-    - **Validates: Requirements 7.2**
-    - **Property 8: Invalid Timestamp Detection** — non-positive-integer timestamps are rejected
-    - **Validates: Requirements 7.5**
-    - **Property 5: Duplicate Collapse Preserves Latest** — collapse keeps highest ID per (entity, entity_id)
-    - **Validates: Requirements 6.3**
-    - **Property 12: Error Message Truncation** — stored last_error ≤ 1024 chars
-    - **Validates: Requirements 6.6**
-    - Minimum 100 iterations per property
-
-  - [ ]* 15.3 Write property tests for outbox enqueue (`src/lib/sync/__tests__/outbox.test.ts`)
-    - **Property 4: Transactional Outbox Enqueue Integrity** — enqueued row has correct entity, entity_id, op, valid JSON payload, positive enqueued_at
-    - **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 4.3, 14.5**
-    - **Property 9: Subtree Operations Enqueue All Affected Entities** — soft-delete of root produces N+1 resource rows + event rows for subtree
-    - **Validates: Requirements 5.5, 5.6**
-    - Minimum 100 iterations per property
-
-  - [ ]* 15.4 Write property tests for auth validation (`src/components/Auth/__tests__/validation.test.ts`)
-    - **Property 10: Email Validation** — accepts iff contains `@` AND length ≤ 254
-    - **Validates: Requirements 2.4**
-    - **Property 11: Password Validation** — accepts iff length ≥ 8 AND ≤ 128
-    - **Validates: Requirements 2.5**
-    - Extract validation functions to testable module
-    - Minimum 100 iterations per property
-
-  - [ ]* 15.5 Write unit tests for auth store state transitions
-    - Test: loading → anonymous when no session
-    - Test: loading → authed when valid session exists
-    - Test: authed → anonymous on signOut
-    - Test: init sets anonymous when supabase is null
-    - _Requirements: 2.1, 2.6, 3.1, 3.3_
-
-  - [ ]* 15.6 Write unit tests for worker tick logic
-    - Test: tick skips when auth state is anonymous
-    - Test: tick skips when navigator.onLine is false (sets offline status)
-    - Test: successful flush deletes outbox rows and updates status
-    - Test: failed flush bumps retry with backoff
-    - Test: partial failure (one entity type fails) handles correctly
-    - _Requirements: 6.1, 6.4, 6.5, 6.7, 6.8, 15.2_
-
-  - [ ]* 15.7 Write unit tests for pull logic
-    - Test: pull triggered only once per user per process
-    - Test: pull failure leaves local data unchanged and sets error status
-    - Test: pull writes cloud-wins to SQLite and enqueues local-wins
-    - _Requirements: 8.1, 8.9_
-
-- [ ] 16. Checkpoint
+- [x] 16. Checkpoint
   - Ensure all tests pass (`pnpm typecheck && pnpm lint && pnpm test`), ask the user if questions arise.
 
-- [ ] 17. Documentation update
-  - [ ] 17.1 Update `CLAUDE.md` with Phase 4 completion notes
+- [x] 17. Documentation update
+  - [x] 17.1 Update `CLAUDE.md` with Phase 4 completion notes
     - Document env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`)
     - Document migration runbook reference
     - Document test commands (`pnpm test`, `pnpm test:cov`)
     - Mark Phase 4 as complete
     - _Requirements: 1.1, 1.4_
 
-- [ ] 18. Final checkpoint
+- [x] 18. Final checkpoint
   - Ensure all tests pass (`pnpm typecheck && pnpm lint && pnpm test`), ask the user if questions arise.
 
 ## Notes
