@@ -189,7 +189,9 @@ export async function runInitialPull(userId: string): Promise<void> {
   const db = await getDb();
 
   // Step 4: LWW merge workspaces → write to SQLite (Req 2.2, 7.6)
-  const localWS = await db.select<Workspace[]>(`SELECT * FROM workspaces`);
+  // Exclude Local_Personal_Workspace (owner_id = 'local') — it must never be synced to Supabase
+  const localWS = (await db.select<Workspace[]>(`SELECT * FROM workspaces`))
+    .filter((w) => w.owner_id !== 'local');
   const cloudWSLoc = (cloudWS ?? []).map((c) =>
     cloudToLocalWorkspace(c as Record<string, unknown>),
   );
@@ -219,7 +221,9 @@ export async function runInitialPull(userId: string): Promise<void> {
   }
 
   // Step 5: LWW merge memberships → write to SQLite (Req 2.2)
-  const localMem = await db.select<WorkspaceMembership[]>(`SELECT * FROM workspace_memberships`);
+  // Exclude local memberships (user_id = 'local') — they must never be synced
+  const localMem = (await db.select<WorkspaceMembership[]>(`SELECT * FROM workspace_memberships`))
+    .filter((m) => m.user_id !== 'local');
   const cloudMemLoc = (cloudMem ?? []).map((c) =>
     cloudToLocalMembership(c as Record<string, unknown>),
   );
@@ -251,12 +255,21 @@ export async function runInitialPull(userId: string): Promise<void> {
       );
     }
     for (const m of memMerge.pushOutbox) {
+      // Strip synthetic id and updated_at (added only for lwwMerge) before enqueue —
+      // Supabase workspace_memberships table has no 'id' column (composite PK)
+      // and no 'updated_at' column.
+      const payload = {
+        workspace_id: m.workspace_id,
+        user_id: m.user_id,
+        role: m.role,
+        joined_at: m.joined_at,
+      };
       await enqueue(
         db,
         'workspace_membership',
         `${m.workspace_id}:${m.user_id}`,
         'upsert',
-        m as unknown as Record<string, unknown>,
+        payload as unknown as Record<string, unknown>,
       );
     }
   } catch (e) {
