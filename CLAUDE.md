@@ -8,9 +8,9 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 
 ## Current phase
 
-**Faza 3 — Polish UX (DONE).** Code-split Dashboard (lazy import, initial bundle 222kB zamiast 599kB). Keyboard shortcuts (Ctrl+1/2 tabs, Ctrl+N nowy projekt, F2/Enter rename, L log work, Delete usuń). Inline rename (double-click lub F2). Drag-drop węzłów drzewa (HTML5 native, walidacja `canParent` + cycle check). CSV export eventów z dashboard. `moveResource` query + recalc cached_minutes dla obu ancestor chains.
+**Faza 4 — Supabase Auth + Single-User Cloud Sync (DONE).** `@supabase/supabase-js` client singleton (null when env vars missing). Zustand `useAuthStore` with `loading | anonymous | authed` states + `SyncStatus`. Header `AuthGate` (Sign in button / email dropdown) + `AuthModal` (Login/Signup tabs, email/password validation). SQLite `sync_outbox` table; every mutation in `queries.ts` enqueues a row in same transaction as write (`withTx` helper). Foreground worker (`src/lib/sync/worker.ts`) flushes every 10s + on visibility change with exponential backoff (`min(2^attempts × 1000, 300000ms)`). Partial flush: success/failure tracked per entity independently. Timestamp validation before push. First login → `runInitialPull` + LWW merge per row (`updated_at` wins) + path rebuild + cached_minutes recalc. RLS in Postgres: `user_id = auth.uid()`. Vitest + fast-check: 12 correctness properties, 60+ tests across 7 test files. Anonymous mode = pełna funkcjonalność Faz 1-3.
 
-**Next: Faza 4 — Supabase Auth + Single-User Cloud Sync** (opcjonalny backup do chmury, outbox pattern).
+**Next: Faza 5 — Multi-tenant schema** (workspaces, ltree, RLS na workspace_id, invites).
 
 ---
 
@@ -30,8 +30,10 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 | Lokalne DB | SQLite (`tauri-plugin-sql`) | sqlx 0.8 |
 | State | Zustand | 5 |
 | Wykresy | Recharts | 3+ |
+| Cloud BaaS | Supabase (`@supabase/supabase-js`) | 2 |
+| Tests | Vitest + fast-check + Testing Library | 4+ |
 
-Planowane (kolejne fazy): Supabase + Auth (Faza 4), Realtime (Faza 7).
+Planowane (kolejne fazy): Realtime (Faza 7).
 
 ---
 
@@ -52,7 +54,29 @@ pnpm typecheck   # tsc --noEmit
 pnpm lint        # eslint .
 pnpm format      # prettier --write .
 pnpm build       # tsc + vite build
+
+pnpm test        # vitest run (all tests)
+pnpm test:watch  # vitest watch mode
+pnpm test:cov    # vitest run --coverage (src/lib/sync/ ≥ 80%)
 ```
+
+### Cloud sync env vars (`.env.local`, gitignored)
+
+```
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
+```
+
+Without env vars the app runs in anonymous mode (Fazy 1-3 UX). With env vars but not logged in: same UX, but Sign in button appears.
+
+### Postgres migration (Faza 4)
+
+1. Open Supabase SQL Editor
+2. Paste `supabase/migrations/20260512000001_init.sql`
+3. Run (wrapped in `BEGIN/COMMIT`, rollback on error)
+4. Verify: `SELECT relrowsecurity FROM pg_class WHERE relname IN ('resources','events')` — both `true`
+
+See `supabase/README.md` for full runbook.
 
 ### Windows dev environment — WAŻNE
 
@@ -96,20 +120,24 @@ tracker/
 └── package.json
 ```
 
-Aktualne (Fazy 1-2):
+Aktualne (Fazy 1-4):
 - `src/components/Tree/` — `TreeView`, `TreeNode`
 - `src/components/Dashboard/` — `DashboardView`, `StatsCard`, `ProjectsPieChart`, `DailyBarChart`
 - `src/components/` — `ContextMenu`, `PromptModal`, `ColorPickerModal`, `LogWorkModal`, `ProjectsView`
+- `src/components/Auth/` — `AuthGate`, `AuthModal`, `SyncStatusBadge`, `SyncStatusModal`, `validation.ts`
 - `src/lib/db/` — `schema.ts`, `types.ts`, `connection.ts`, `queries.ts` (`listEventsInRange`)
 - `src/lib/utils/` — `time.ts` (parser + format), `tree.ts` (buildTree, path helpers), `uuid.ts`
 - `src/lib/analytics/aggregate.ts` — `aggregate`, `daysAgoIso`, `fillDailyGaps`, `rootIdOfPath`
 - `src/lib/utils/csv.ts` — `eventsToCsv`, `downloadCsv` (BOM, RFC-style escaping)
 - `src/lib/hooks/useEventsRange.ts` — async fetch hook (loading/error/events)
+- `src/lib/sync/` — `merge.ts`, `outbox.ts`, `worker.ts`, `pull.ts`, `types.ts`
+- `src/lib/supabase.ts` — Supabase client singleton (null when env vars missing)
 - `src/store/projects.ts` — Zustand store (resources, tree, expansion, CRUD + `rename` + `move`)
+- `src/store/auth.ts` — Zustand auth + syncStatus store
+- `supabase/migrations/` — Postgres schema + RLS
+- `src/test/setup.ts` + `vitest.config.ts` — test infrastructure
 
 Plan future folders (kolejne fazy):
-- `src/lib/sync/` — outbox queue (Faza 4+)
-- `supabase/migrations/` — postgres migracje (Faza 4+)
 
 ---
 
@@ -200,7 +228,7 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 1. **MVP Local** ✓ — SQLite, single-user, drzewo + log work + context menu
 2. **Dashboard** ✓ — Recharts (Pie/Bar) + filtry data + projekty + stats cards
 3. **Polish UX** ✓ — code-split, skróty klawiszowe, inline rename, drag-drop, CSV export
-4. Supabase Auth + single-user cloud sync
+4. **Supabase Auth + single-user cloud sync** ✓ — outbox + LWW merge + RLS + Vitest PBT
 5. Multi-tenant schema — workspaces, ltree, RLS
 6. Team features — invites, assignments, avatary
 7. Realtime + presence
