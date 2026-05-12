@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { AuthGate } from "@/components/Auth/AuthGate";
+import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { ProjectsView } from "./components/ProjectsView";
 
 const DashboardView = lazy(() =>
@@ -41,6 +42,7 @@ function App() {
           Dashboard
         </TabButton>
         <div className="ml-auto flex items-center gap-2">
+          <SyncStatusBadge />
           <AuthGate />
         </div>
       </nav>
