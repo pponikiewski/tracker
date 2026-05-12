@@ -40,4 +40,18 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
 CREATE INDEX IF NOT EXISTS idx_events_resource ON events(resource_id);
 CREATE INDEX IF NOT EXISTS idx_events_active ON events(deleted_at) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sync_outbox (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity        TEXT NOT NULL CHECK (entity IN ('resource','event')),
+  entity_id     TEXT NOT NULL,
+  op            TEXT NOT NULL CHECK (op IN ('upsert','delete')),
+  payload       TEXT NOT NULL,
+  enqueued_at   INTEGER NOT NULL,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  last_error    TEXT,
+  next_retry_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at);
 `;

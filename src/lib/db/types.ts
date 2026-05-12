@@ -63,3 +63,18 @@ export function canParent(parent: ResourceType, child: ResourceType): boolean {
   if (child === "stage") return parent === "project";
   return false;
 }
+
+export type OutboxEntity = 'resource' | 'event';
+export type OutboxOp = 'upsert' | 'delete';
+
+export interface OutboxRow {
+  id: number;
+  entity: OutboxEntity;
+  entity_id: string;
+  op: OutboxOp;
+  payload: string;
+  enqueued_at: number;
+  attempts: number;
+  last_error: string | null;
+  next_retry_at: number | null;
+}
