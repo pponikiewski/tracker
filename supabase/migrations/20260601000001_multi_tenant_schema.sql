@@ -122,8 +122,40 @@ CREATE POLICY "wm_select" ON workspace_memberships
   FOR SELECT USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "wm_owner_write" ON workspace_memberships;
-CREATE POLICY "wm_owner_write" ON workspace_memberships
-  FOR ALL USING (
+DROP POLICY IF EXISTS "wm_insert" ON workspace_memberships;
+DROP POLICY IF EXISTS "wm_delete" ON workspace_memberships;
+DROP POLICY IF EXISTS "wm_update" ON workspace_memberships;
+
+-- INSERT: allowed when user is inserting themselves as owner of a workspace they own,
+-- OR when an existing owner is adding a new member to their workspace.
+CREATE POLICY "wm_insert" ON workspace_memberships
+  FOR INSERT WITH CHECK (
+    -- Case 1: user is adding themselves as owner of a workspace they just created
+    (user_id = auth.uid() AND role = 'owner'
+     AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = workspace_id AND w.owner_id = auth.uid()))
+    OR
+    -- Case 2: existing owner is adding a member
+    EXISTS (
+      SELECT 1 FROM workspace_memberships wm2
+      WHERE wm2.workspace_id = workspace_memberships.workspace_id
+        AND wm2.user_id = auth.uid()
+        AND wm2.role = 'owner'
+    )
+  );
+
+-- UPDATE/DELETE: only workspace owners can modify memberships
+CREATE POLICY "wm_update" ON workspace_memberships
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM workspace_memberships wm2
+      WHERE wm2.workspace_id = workspace_memberships.workspace_id
+        AND wm2.user_id = auth.uid()
+        AND wm2.role = 'owner'
+    )
+  );
+
+CREATE POLICY "wm_delete" ON workspace_memberships
+  FOR DELETE USING (
     EXISTS (
       SELECT 1 FROM workspace_memberships wm2
       WHERE wm2.workspace_id = workspace_memberships.workspace_id
