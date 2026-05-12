@@ -13,9 +13,15 @@ const MAX_NAME_LEN = 50;
 
 export function WorkspaceSwitcher() {
   const authState = useAuthStore((s) => s.state);
-  const workspaces = useWorkspaceStore((s) => s.userWorkspaces());
-  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace());
+  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
+
+  // Compute derived values outside the selector to avoid infinite re-render loops
+  const workspaces = allWorkspaces
+    .filter((w) => w.deleted_at === null)
+    .sort((a, b) => a.created_at - b.created_at);
+  const activeWorkspace = allWorkspaces.find((w) => w.id === activeWorkspaceId) ?? null;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
