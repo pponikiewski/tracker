@@ -102,18 +102,25 @@ DROP POLICY IF EXISTS "workspace_member_access" ON workspaces;
 DROP POLICY IF EXISTS "workspace_select" ON workspaces;
 DROP POLICY IF EXISTS "workspace_insert" ON workspaces;
 DROP POLICY IF EXISTS "workspace_update_delete" ON workspaces;
+DROP POLICY IF EXISTS "workspace_update" ON workspaces;
+DROP POLICY IF EXISTS "workspace_delete" ON workspaces;
 
--- SELECT/UPDATE/DELETE: only members can access their workspaces
+-- SELECT: members can see their workspaces; owners can always see their own
+-- (breaks the chicken-and-egg: owner needs to see the workspace before membership exists)
 CREATE POLICY "workspace_select" ON workspaces
-  FOR SELECT USING (is_workspace_member(id));
+  FOR SELECT USING (is_workspace_member(id) OR owner_id = auth.uid());
 
 -- INSERT: authenticated user can create a workspace where they are the owner
 CREATE POLICY "workspace_insert" ON workspaces
   FOR INSERT WITH CHECK (owner_id = auth.uid() AND auth.uid() IS NOT NULL);
 
--- UPDATE/DELETE: only members can modify their workspaces
-CREATE POLICY "workspace_update_delete" ON workspaces
-  FOR ALL USING (is_workspace_member(id));
+-- UPDATE: members can update workspaces they belong to; owner can always update their own
+CREATE POLICY "workspace_update" ON workspaces
+  FOR UPDATE USING (is_workspace_member(id) OR owner_id = auth.uid());
+
+-- DELETE: only owner can delete
+CREATE POLICY "workspace_delete" ON workspaces
+  FOR DELETE USING (owner_id = auth.uid());
 
 -- 14. Polityki RLS: workspace_memberships
 DROP POLICY IF EXISTS "wm_select" ON workspace_memberships;
