@@ -54,9 +54,14 @@ UPDATE events e SET workspace_id = (
 ) WHERE e.workspace_id IS NULL;
 
 -- 8. Migracja ltree: path TEXT -> ltree (idempotentna)
+-- Najpierw konwertuj wartosci: '-' -> '_', '/' -> '.' (ltree nie akceptuje myslnikow)
+-- Potem zmien typ kolumny.
 DO $$ BEGIN
   IF (SELECT data_type FROM information_schema.columns
       WHERE table_name = 'resources' AND column_name = 'path') = 'text' THEN
+    -- Krok 1: przekonwertuj istniejace wartosci na format ltree
+    UPDATE resources SET path = replace(replace(path, '-', '_'), '/', '.');
+    -- Krok 2: zmien typ kolumny
     ALTER TABLE resources ALTER COLUMN path TYPE ltree USING path::ltree;
   END IF;
 END $$;
