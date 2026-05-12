@@ -14,14 +14,22 @@ const toMs = (v: unknown): number =>
   typeof v === 'string' ? Date.parse(v) : (v as number);
 
 function cloudToLocalResource(c: Record<string, unknown>): Resource {
+  // path may be in ltree format (dots + underscores) or legacy TEXT format (slashes + hyphens)
+  // Try ltree conversion first; fall back to using the value as-is if it fails
+  let path: string;
+  try {
+    path = ltreeToPath(c.path as string);
+  } catch {
+    // Legacy TEXT format or already a materialized path — use as-is
+    path = c.path as string;
+  }
   return {
     id: c.id as string,
     parent_id: (c.parent_id as string | null) ?? null,
     name: c.name as string,
     type: c.type as Resource['type'],
     color: (c.color as string | null) ?? null,
-    // Req 5.4: convert ltree path back to materialized path (slash-separated UUIDs)
-    path: ltreeToPath(c.path as string),
+    path,
     cached_minutes: (c.cached_minutes as number) ?? 0,
     created_at: toMs(c.created_at),
     updated_at: toMs(c.updated_at),
