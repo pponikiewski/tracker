@@ -1,5 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
-import { SCHEMA_SQL, SCHEMA_V5_SQL } from "./schema";
+import { SCHEMA_SQL } from "./schema";
 
 const DB_URL = "sqlite:tracker.db";
 
@@ -28,54 +28,81 @@ export async function runPhase5Migration(db: Database): Promise<void> {
   const localWorkspaceId = crypto.randomUUID();
   const now = Date.now();
 
-  await db.execute("BEGIN");
-  try {
-    // Step 1: Run SCHEMA_V5_SQL statements (creates workspaces,
-    // workspace_memberships, recreates sync_outbox with extended CHECK).
-    // Split on semicolons and skip empty/whitespace-only fragments.
-    const statements = SCHEMA_V5_SQL.split(";")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+  // NOTE: We do NOT use an explicit BEGIN/COMMIT here because some statements
+  // (DDL like CREATE TABLE, DROP TABLE, ALTER TABLE) cause an implicit commit
+  // in SQLite when executed inside a transaction via the Tauri SQL plugin.
+  // Instead we execute each step individually. The idempotency guard above
+  // ensures we never run this twice.
 
-    for (const stmt of statements) {
-      await db.execute(stmt);
-    }
+  // Step 1a: Create workspaces table
+  await db.execute(`CREATE TABLE IF NOT EXISTS workspaces (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 255),
+    owner_id    TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    deleted_at  INTEGER
+  )`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_workspaces_active ON workspaces(deleted_at) WHERE deleted_at IS NULL`);
 
-    // Step 2: Insert Local_Personal_Workspace (INSERT OR IGNORE — idempotent).
-    await db.execute(
-      "INSERT OR IGNORE INTO workspaces (id, name, owner_id, created_at, updated_at) VALUES (?, 'My workspace', 'local', ?, ?)",
-      [localWorkspaceId, now, now],
-    );
+  // Step 1b: Create workspace_memberships table
+  await db.execute(`CREATE TABLE IF NOT EXISTS workspace_memberships (
+    workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL,
+    role          TEXT NOT NULL CHECK (role IN ('owner', 'member')),
+    joined_at     INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, user_id)
+  )`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_wm_user ON workspace_memberships(user_id)`);
 
-    // Step 3: Insert owner membership for Local_Personal_Workspace.
-    await db.execute(
-      "INSERT OR IGNORE INTO workspace_memberships (workspace_id, user_id, role, joined_at) VALUES (?, 'local', 'owner', ?)",
-      [localWorkspaceId, now],
-    );
+  // Step 1c: Recreate sync_outbox with extended entity CHECK constraint
+  await db.execute(`CREATE TABLE IF NOT EXISTS sync_outbox_new (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity        TEXT NOT NULL CHECK (entity IN ('resource','event','workspace','workspace_membership')),
+    entity_id     TEXT NOT NULL,
+    op            TEXT NOT NULL CHECK (op IN ('upsert','delete')),
+    payload       TEXT NOT NULL,
+    enqueued_at   INTEGER NOT NULL,
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    next_retry_at INTEGER
+  )`);
+  await db.execute(`INSERT INTO sync_outbox_new (id, entity, entity_id, op, payload, enqueued_at, attempts, last_error, next_retry_at)
+    SELECT id, entity, entity_id, op, payload, enqueued_at, attempts, last_error, next_retry_at FROM sync_outbox`);
+  await db.execute(`DROP TABLE sync_outbox`);
+  await db.execute(`ALTER TABLE sync_outbox_new RENAME TO sync_outbox`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at)`);
 
-    // Step 4: Add workspace_id column to resources and backfill.
-    await db.execute(
-      "ALTER TABLE resources ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE",
-    );
-    await db.execute(
-      "UPDATE resources SET workspace_id = ? WHERE workspace_id IS NULL",
-      [localWorkspaceId],
-    );
+  // Step 2: Insert Local_Personal_Workspace
+  await db.execute(
+    `INSERT OR IGNORE INTO workspaces (id, name, owner_id, created_at, updated_at) VALUES (?, 'My workspace', 'local', ?, ?)`,
+    [localWorkspaceId, now, now],
+  );
 
-    // Step 5: Add workspace_id column to events and backfill.
-    await db.execute(
-      "ALTER TABLE events ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE",
-    );
-    await db.execute(
-      "UPDATE events SET workspace_id = ? WHERE workspace_id IS NULL",
-      [localWorkspaceId],
-    );
+  // Step 3: Insert owner membership for Local_Personal_Workspace
+  await db.execute(
+    `INSERT OR IGNORE INTO workspace_memberships (workspace_id, user_id, role, joined_at) VALUES (?, 'local', 'owner', ?)`,
+    [localWorkspaceId, now],
+  );
 
-    await db.execute("COMMIT");
-  } catch (err) {
-    await db.execute("ROLLBACK");
-    throw err;
-  }
+  // Step 4: Add workspace_id to resources and backfill
+  await db.execute(
+    `ALTER TABLE resources ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE`,
+  );
+  await db.execute(
+    `UPDATE resources SET workspace_id = ? WHERE workspace_id IS NULL`,
+    [localWorkspaceId],
+  );
+
+  // Step 5: Add workspace_id to events and backfill
+  await db.execute(
+    `ALTER TABLE events ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE`,
+  );
+  await db.execute(
+    `UPDATE events SET workspace_id = ? WHERE workspace_id IS NULL`,
+    [localWorkspaceId],
+  );
 }
 
 export async function getDb(): Promise<Database> {
