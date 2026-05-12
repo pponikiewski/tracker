@@ -99,8 +99,21 @@ ALTER TABLE invites                ENABLE ROW LEVEL SECURITY;
 
 -- 13. Polityki RLS: workspaces
 DROP POLICY IF EXISTS "workspace_member_access" ON workspaces;
-CREATE POLICY "workspace_member_access" ON workspaces
-  FOR ALL USING (is_workspace_member(id)) WITH CHECK (is_workspace_member(id));
+DROP POLICY IF EXISTS "workspace_select" ON workspaces;
+DROP POLICY IF EXISTS "workspace_insert" ON workspaces;
+DROP POLICY IF EXISTS "workspace_update_delete" ON workspaces;
+
+-- SELECT/UPDATE/DELETE: only members can access their workspaces
+CREATE POLICY "workspace_select" ON workspaces
+  FOR SELECT USING (is_workspace_member(id));
+
+-- INSERT: authenticated user can create a workspace where they are the owner
+CREATE POLICY "workspace_insert" ON workspaces
+  FOR INSERT WITH CHECK (owner_id = auth.uid() AND auth.uid() IS NOT NULL);
+
+-- UPDATE/DELETE: only members can modify their workspaces
+CREATE POLICY "workspace_update_delete" ON workspaces
+  FOR ALL USING (is_workspace_member(id));
 
 -- 14. Polityki RLS: workspace_memberships
 DROP POLICY IF EXISTS "wm_select" ON workspace_memberships;
