@@ -10,7 +10,10 @@
     "tauri": "tauri",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
@@ -26,18 +29,24 @@
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "@vitest/ui": "^4.1.6",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "fast-check": "^4.8.0",
     "globals": "^17.6.0",
+    "happy-dom": "^20.9.0",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.3.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.59.2",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.1.6"
   }
 }
