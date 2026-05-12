@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { AuthGate } from "@/components/Auth/AuthGate";
 import { ProjectsView } from "./components/ProjectsView";
 
 const DashboardView = lazy(() =>
@@ -39,6 +40,9 @@ function App() {
         <TabButton active={tab === "dashboard"} onClick={() => setTab("dashboard")} hint="Ctrl+2">
           Dashboard
         </TabButton>
+        <div className="ml-auto flex items-center gap-2">
+          <AuthGate />
+        </div>
       </nav>
       <div className="flex-1 overflow-hidden">
         {tab === "projects" ? (
