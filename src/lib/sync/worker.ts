@@ -73,6 +73,19 @@ export function mapWorkspaceToCloud(data: Record<string, unknown>): Record<strin
   };
 }
 
+// Exported for property tests (Property 10 — team-features)
+// Assignment already carries user_id as a data field — do not inject it again.
+// Converts created_at, updated_at, deleted_at from Unix epoch ms to ISO 8601 strings.
+export function mapAssignmentToCloud(data: Record<string, unknown>): Record<string, unknown> {
+  const toIso = (v: number) => new Date(v).toISOString();
+  return {
+    ...data,
+    created_at: toIso(data.created_at as number),
+    updated_at: toIso(data.updated_at as number),
+    deleted_at: data.deleted_at != null ? toIso(data.deleted_at as number) : null,
+  };
+}
+
 function validateRowTimestamps(data: Record<string, unknown>): string | null {
   if (!isValidTimestamp(data.created_at)) return `invalid created_at: ${String(data.created_at)}`;
   if (!isValidTimestamp(data.updated_at)) return `invalid updated_at: ${String(data.updated_at)}`;
