@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import * as workspaceQueries from '@/lib/db/workspaceQueries';
-import type { Workspace, WorkspaceMembership, Invite } from '@/lib/db/types';
+import type { Workspace, WorkspaceMembership } from '@/lib/db/types';
+import {
+  generateJoinCode as svcGenerateJoinCode,
+  listActiveJoinCodes as svcListActiveJoinCodes,
+  revokeJoinCode as svcRevokeJoinCode,
+  redeemJoinCode as svcRedeemJoinCode,
+  type JoinCode,
+} from '@/lib/workspace/joinCodeService';
 import { useAssignmentStore } from '@/store/assignments';
 import { useProfileStore } from '@/store/profile';
 
@@ -12,14 +19,6 @@ export function validateWorkspaceName(name: string): void {
   if (trimmed.length < 1 || trimmed.length > 80) {
     throw new Error(
       'Workspace name must be between 1 and 80 characters (after trimming whitespace).',
-    );
-  }
-}
-
-function validateEmail(email: string): void {
-  if (!email.includes('@') || email.length > 254) {
-    throw new Error(
-      'Invalid email address: must contain "@" and be at most 254 characters.',
     );
   }
 }
@@ -51,10 +50,10 @@ interface WorkspaceState {
   setActiveWorkspace: (id: string) => Promise<void>;
   restoreActiveWorkspace: (userId: string | null) => Promise<void>;
   removeMember: (workspaceId: string, userId: string) => Promise<void>;
-  createInvite: (workspaceId: string, email: string) => Promise<Invite>;
-  cancelInvite: (inviteId: string) => Promise<void>;
-  listInvites: (workspaceId: string) => Promise<Invite[]>;
-  acceptInvite: (token: string) => Promise<void>;
+  generateJoinCode: (workspaceId: string) => Promise<JoinCode>;
+  listActiveJoinCodes: (workspaceId: string) => Promise<JoinCode[]>;
+  revokeJoinCode: (code: string) => Promise<void>;
+  joinWorkspaceByCode: (code: string) => Promise<string>;
   refresh: () => Promise<void>;
 }
 
@@ -261,114 +260,40 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       await get().refresh();
     },
 
-    // ---- createInvite ----
+    // ---- join codes ----
 
-    createInvite: async (workspaceId: string, email: string) => {
-      validateEmail(email);
-      if (!supabase) throw new Error('Supabase not configured');
-
-      const userId = _getUserId?.() ?? null;
-      if (!userId) throw new Error('Cannot create invite: no authenticated user.');
-
-      const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
-      const token = crypto.randomUUID();
-
-      const { data, error } = await supabase
-        .from('invites')
-        .insert({
-          workspace_id: workspaceId,
-          invited_email: email,
-          invited_by: userId,
-          token,
-          expires_at: expiresAt,
-        })
-        .select()
-        .single();
-
-      if (error) throw new Error(error.message);
-      return data as Invite;
+    generateJoinCode: async (workspaceId: string) => {
+      return svcGenerateJoinCode(workspaceId);
     },
 
-    // ---- cancelInvite ----
-
-    cancelInvite: async (inviteId: string) => {
-      if (!supabase) throw new Error('Supabase not configured');
-
-      const { error } = await supabase.from('invites').delete().eq('id', inviteId);
-      if (error) throw new Error(error.message);
+    listActiveJoinCodes: async (workspaceId: string) => {
+      return svcListActiveJoinCodes(workspaceId);
     },
 
-    // ---- listInvites ----
-
-    listInvites: async (workspaceId: string) => {
-      if (!supabase) throw new Error('Supabase not configured');
-
-      const { data, error } = await supabase
-        .from('invites')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .is('accepted_at', null)
-        .gt('expires_at', new Date().toISOString());
-
-      if (error) throw new Error(error.message);
-      return (data ?? []) as Invite[];
+    revokeJoinCode: async (code: string) => {
+      await svcRevokeJoinCode(code);
     },
 
-    // ---- acceptInvite ----
+    // ---- joinWorkspaceByCode ----
 
-    acceptInvite: async (token: string) => {
+    joinWorkspaceByCode: async (code: string) => {
       if (!supabase) throw new Error('Supabase not configured');
 
-      // Fetch invite by token
-      const { data: inviteData, error: fetchError } = await supabase
-        .from('invites')
-        .select('*')
-        .eq('token', token)
-        .single();
+      const workspaceId = await svcRedeemJoinCode(code);
 
-      if (fetchError || !inviteData) {
-        throw new Error('Invite not found or invalid token.');
-      }
+      const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+      if (!userId) throw new Error('Musisz być zalogowany, aby dołączyć do workspace.');
 
-      const invite = inviteData as Invite;
-
-      // Validate invite
-      if (invite.accepted_at !== null) {
-        throw new Error('This invite has already been accepted.');
-      }
-      if (new Date(invite.expires_at) <= new Date()) {
-        throw new Error('This invite has expired.');
-      }
-
-      const userId = _getUserId?.() ?? null;
-      if (!userId) throw new Error('Cannot accept invite: no authenticated user.');
-
-      // Insert membership in Supabase
-      const { error: memberError } = await supabase.from('workspace_memberships').insert({
-        workspace_id: invite.workspace_id,
-        user_id: userId,
-        role: 'member',
-        joined_at: new Date().toISOString(),
-      });
-
-      if (memberError) throw new Error(memberError.message);
-
-      // Mark invite as accepted
-      const { error: acceptError } = await supabase
-        .from('invites')
-        .update({ accepted_at: new Date().toISOString() })
-        .eq('id', invite.id);
-
-      if (acceptError) throw new Error(acceptError.message);
-
-      // Add workspace to local SQLite
+      // Fetch workspace row so we can mirror it locally.
       const { data: wsData, error: wsError } = await supabase
         .from('workspaces')
         .select('*')
-        .eq('id', invite.workspace_id)
+        .eq('id', workspaceId)
         .single();
 
-      if (wsError || !wsData) throw new Error('Failed to fetch workspace after accepting invite.');
+      if (wsError || !wsData) {
+        throw new Error('Nie udało się pobrać workspace po dołączeniu.');
+      }
 
       const ws = wsData as {
         id: string;
@@ -379,15 +304,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         deleted_at: string | null;
       };
 
-      // Insert workspace locally if not already present
+      // Insert workspace row locally if not already present.
       const existing = await workspaceQueries.getWorkspace(ws.id);
       if (!existing) {
-        // Use insertMembership path — workspace must exist first.
-        // We create it locally without enqueuing (it already exists in Supabase).
-        // workspaceQueries.createWorkspace would enqueue, so we use a direct approach:
-        // Insert via insertMembership after manually inserting the workspace row.
-        // Since workspaceQueries.createWorkspace enqueues, we call it and accept the
-        // duplicate outbox entry (the worker will handle idempotency via LWW).
         await workspaceQueries.createWorkspace({
           id: ws.id,
           name: ws.name,
@@ -395,16 +314,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         });
       }
 
-      // Insert local membership
+      // Insert local membership for the newly joined user.
       await workspaceQueries.insertMembership({
-        workspace_id: invite.workspace_id,
+        workspace_id: workspaceId,
         user_id: userId,
         role: 'member',
         joined_at: Date.now(),
       });
 
-      // Refresh store
       await get().refresh();
+      await get().setActiveWorkspace(workspaceId);
+      return workspaceId;
     },
 
     // ---- refresh ----

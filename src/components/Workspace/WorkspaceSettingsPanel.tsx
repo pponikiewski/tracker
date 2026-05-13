@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useAuthStore } from '@/store/auth';
 import { useProfileStore } from '@/store/profile';
 import { AvatarBadge } from '@/components/Profile/AvatarBadge';
-import type { WorkspaceMembership, Invite } from '@/lib/db/types';
+import { JOIN_CODE_TTL_MS, type JoinCode } from '@/lib/workspace/joinCodeService';
+import type { WorkspaceMembership } from '@/lib/db/types';
 
 interface WorkspaceSettingsPanelProps {
   workspaceId: string;
@@ -17,9 +18,19 @@ function validateName(name: string): string | null {
   return null;
 }
 
-function validateEmail(email: string): string | null {
-  if (!email.includes('@') || email.length > 254) return 'Podaj prawidłowy adres email.';
-  return null;
+/** Formats milliseconds as `m:ss`. Returns '0:00' for non-positive values. */
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return '0:00';
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Groups a 6-digit code as "123 456" for readability. */
+function formatCode(code: string): string {
+  if (code.length !== 6) return code;
+  return `${code.slice(0, 3)} ${code.slice(3)}`;
 }
 
 /** Skeleton block used while profiles are loading. */
@@ -27,11 +38,8 @@ function MemberSkeleton() {
   return (
     <li className="flex items-center justify-between bg-neutral-800 border border-neutral-700 rounded px-3 py-2 animate-pulse">
       <div className="flex items-center gap-2 min-w-0">
-        {/* Avatar placeholder */}
         <span className="h-7 w-7 rounded-full bg-neutral-700 shrink-0" />
-        {/* Name placeholder */}
         <span className="h-3 w-28 rounded bg-neutral-700" />
-        {/* Role badge placeholder */}
         <span className="h-4 w-14 rounded bg-neutral-700 shrink-0" />
       </div>
     </li>
@@ -46,9 +54,9 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const memberships = useWorkspaceStore((s) => s.memberships);
   const renameWorkspace = useWorkspaceStore((s) => s.renameWorkspace);
   const removeMember = useWorkspaceStore((s) => s.removeMember);
-  const createInvite = useWorkspaceStore((s) => s.createInvite);
-  const cancelInvite = useWorkspaceStore((s) => s.cancelInvite);
-  const listInvites = useWorkspaceStore((s) => s.listInvites);
+  const generateJoinCode = useWorkspaceStore((s) => s.generateJoinCode);
+  const listActiveJoinCodes = useWorkspaceStore((s) => s.listActiveJoinCodes);
+  const revokeJoinCode = useWorkspaceStore((s) => s.revokeJoinCode);
   const deleteWorkspace = useWorkspaceStore((s) => s.deleteWorkspace);
 
   const fetchProfiles = useProfileStore((s) => s.fetchProfiles);
@@ -57,7 +65,6 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
 
   const workspace = workspaces.find((w) => w.id === workspaceId) ?? null;
 
-  // Determine if current user is owner
   const isOwner =
     currentUserId !== null &&
     memberships.some(
@@ -67,13 +74,11 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
         m.role === 'owner',
     );
 
-  // Members for this workspace
   const workspaceMembers: WorkspaceMembership[] = memberships.filter(
     (m) => m.workspace_id === workspaceId,
   );
 
   // ---- Profile loading state ----
-  // Track whether we've initiated the profile fetch for this panel open
   const [profilesFetched, setProfilesFetched] = useState(false);
 
   // ---- Name section state ----
@@ -83,21 +88,16 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const [nameSuccess, setNameSuccess] = useState(false);
   const [nameSubmitError, setNameSubmitError] = useState<string | null>(null);
 
-  // ---- Invites state ----
-  const [invites, setInvites] = useState<Invite[]>([]);
-  const [invitesLoading, setInvitesLoading] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteEmailError, setInviteEmailError] = useState<string | null>(null);
-  const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  // ---- Join code state ----
+  const [activeCode, setActiveCode] = useState<JoinCode | null>(null);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [msLeft, setMsLeft] = useState<number>(0);
 
   // ---- Member remove state ----
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
-
-  // ---- Cancel invite state ----
-  const [cancellingInviteId, setCancellingInviteId] = useState<string | null>(null);
 
   // ---- Delete workspace state ----
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -111,7 +111,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
     }
   }, [workspace]);
 
-  // Fetch profiles for all workspace members (and invite inviters) when panel opens
+  // Fetch profiles for all workspace members when panel opens
   useEffect(() => {
     const memberIds = workspaceMembers.map((m) => m.user_id);
     if (memberIds.length === 0) {
@@ -129,48 +129,49 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
-  // Load invites for owner
-  const loadInvites = useCallback(async () => {
-    if (!isOwner) return;
-    setInvitesLoading(true);
-    try {
-      const data = await listInvites(workspaceId);
-      setInvites(data);
-    } catch {
-      // silently ignore
-    } finally {
-      setInvitesLoading(false);
-    }
-  }, [isOwner, listInvites, workspaceId]);
-
+  // Load active join code for owner
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
     (async () => {
-      setInvitesLoading(true);
       try {
-        const data = await listInvites(workspaceId);
-        if (!cancelled) setInvites(data);
+        const codes = await listActiveJoinCodes(workspaceId);
+        if (cancelled) return;
+        setActiveCode(codes[0] ?? null);
       } catch {
         // silently ignore
-      } finally {
-        if (!cancelled) setInvitesLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [isOwner, listInvites, workspaceId]);
+  }, [isOwner, listActiveJoinCodes, workspaceId]);
 
-  // Fetch profiles for inviters once invites are loaded
+  // Tick the countdown every second while a code is active
   useEffect(() => {
-    if (invites.length === 0) return;
-    const inviterIds = [...new Set(invites.map((i) => i.invited_by))];
-    if (inviterIds.length === 0) return;
-    fetchProfiles(inviterIds).catch(() => {
-      // Silently ignore — getProfile will return fallback values
-    });
-  }, [invites, fetchProfiles]);
+    if (!activeCode) {
+      setMsLeft(0);
+      return;
+    }
+    const expiresMs = Date.parse(activeCode.expires_at);
+    const update = () => {
+      const left = expiresMs - Date.now();
+      setMsLeft(left);
+      if (left <= 0) {
+        setActiveCode(null);
+      }
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [activeCode]);
+
+  // Clear the "copied" flash after a moment
+  useEffect(() => {
+    if (!codeCopied) return;
+    const id = setTimeout(() => setCodeCopied(false), 1500);
+    return () => clearTimeout(id);
+  }, [codeCopied]);
 
   // ---- Handlers ----
 
@@ -207,39 +208,36 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
     }
   };
 
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const err = validateEmail(inviteEmail);
-    if (err) {
-      setInviteEmailError(err);
-      return;
-    }
-    setInviteError(null);
-    setInviteLink(null);
-    setInviteBusy(true);
+  const handleGenerateCode = async () => {
+    setCodeError(null);
+    setCodeBusy(true);
     try {
-      const invite = await createInvite(workspaceId, inviteEmail);
-      const link = `${window.location.origin}/invite/${invite.token}`;
-      setInviteLink(link);
-      setInviteEmail('');
-      setInviteEmailError(null);
-      await loadInvites();
+      const code = await generateJoinCode(workspaceId);
+      setActiveCode(code);
     } catch (error) {
-      setInviteError(error instanceof Error ? error.message : 'Nieznany błąd');
+      setCodeError(error instanceof Error ? error.message : 'Nieznany błąd');
     } finally {
-      setInviteBusy(false);
+      setCodeBusy(false);
     }
   };
 
-  const handleCancelInvite = async (inviteId: string) => {
-    setCancellingInviteId(inviteId);
+  const handleRevokeCode = async () => {
+    if (!activeCode) return;
     try {
-      await cancelInvite(inviteId);
-      setInvites((prev) => prev.filter((i) => i.id !== inviteId));
+      await revokeJoinCode(activeCode.code);
+      setActiveCode(null);
+    } catch (error) {
+      setCodeError(error instanceof Error ? error.message : 'Nieznany błąd');
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (!activeCode) return;
+    try {
+      await navigator.clipboard.writeText(activeCode.code);
+      setCodeCopied(true);
     } catch {
-      // silently ignore
-    } finally {
-      setCancellingInviteId(null);
+      // Fallback: select the text (best-effort)
     }
   };
 
@@ -259,34 +257,20 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
     }
   };
 
-  const formatExpiry = (isoDate: string) => {
-    try {
-      return new Date(isoDate).toLocaleDateString('pl-PL', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return isoDate;
-    }
-  };
-
   const roleLabel = (role: 'owner' | 'member') =>
     role === 'owner' ? 'Właściciel' : 'Członek';
 
-  // True while we're still waiting for the initial profile fetch to settle
   const membersLoading = !profilesFetched || profilesLoading;
+
+  // Total countdown percentage (for progress bar).
+  const ttlRatio = Math.max(0, Math.min(1, msLeft / JOIN_CODE_TTL_MS));
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-start justify-end z-50">
       <div className="bg-neutral-900 border-l border-neutral-700 h-full w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-700 shrink-0">
-          <h2 className="text-sm font-medium text-neutral-100">
-            Ustawienia workspace
-          </h2>
+          <h2 className="text-sm font-medium text-neutral-100">Ustawienia workspace</h2>
           <button
             type="button"
             onClick={onClose}
@@ -299,7 +283,6 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
-
           {/* ---- Name section ---- */}
           <section>
             <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
@@ -335,9 +318,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                     {nameSubmitError}
                   </p>
                 )}
-                {nameSuccess && (
-                  <p className="text-green-400 text-xs">Zapisano.</p>
-                )}
+                {nameSuccess && <p className="text-green-400 text-xs">Zapisano.</p>}
                 <div className="flex justify-end">
                   <button
                     type="submit"
@@ -368,7 +349,6 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
             {workspaceMembers.length === 0 ? (
               <p className="text-xs text-neutral-500">Brak członków.</p>
             ) : membersLoading ? (
-              /* Loading skeletons — Requirement 4.3 */
               <ul className="space-y-1" aria-busy="true" aria-label="Ładowanie członków…">
                 {workspaceMembers.map((m) => (
                   <MemberSkeleton key={m.user_id} />
@@ -377,7 +357,6 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
             ) : (
               <ul className="space-y-1">
                 {workspaceMembers.map((m) => {
-                  /* Requirement 4.1, 4.4: show AvatarBadge + display_name; fall back to user_id */
                   const profile = getProfile(m.user_id);
                   return (
                     <li
@@ -421,103 +400,75 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
             )}
           </section>
 
-          {/* ---- Pending invites (owner only) ---- */}
+          {/* ---- Join code section (owner only) ---- */}
           {isOwner && (
             <section>
               <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
-                Oczekujące zaproszenia
+                Kod dołączenia
               </h3>
-              {invitesLoading ? (
-                <p className="text-xs text-neutral-500">Ładowanie…</p>
-              ) : invites.length === 0 ? (
-                <p className="text-xs text-neutral-500">Brak oczekujących zaproszeń.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {invites.map((invite) => {
-                    /* Requirement 4.5: show inviter display_name; fall back to user_id */
-                    const inviterProfile = getProfile(invite.invited_by);
-                    return (
-                      <li
-                        key={invite.id}
-                        className="flex items-center justify-between bg-neutral-800 border border-neutral-700 rounded px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs text-neutral-200 truncate">
-                            {invite.invited_email}
-                          </p>
-                          <p className="text-xs text-neutral-500 mt-0.5">
-                            Zaproszony przez: {inviterProfile.display_name}
-                          </p>
-                          <p className="text-xs text-neutral-500 mt-0.5">
-                            Wygasa: {formatExpiry(invite.expires_at)}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCancelInvite(invite.id)}
-                          disabled={cancellingInviteId === invite.id}
-                          className="ml-2 text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-                        >
-                          {cancellingInviteId === invite.id ? '…' : 'Anuluj'}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          )}
+              <p className="mb-3 text-xs text-neutral-500">
+                Wygeneruj 6-cyfrowy kod, który Twoi współpracownicy mogą wpisać, aby dołączyć
+                do tego workspace. Kod jest jednorazowy i wygasa po 5 minutach.
+              </p>
 
-          {/* ---- Invite form (owner only) ---- */}
-          {isOwner && (
-            <section>
-              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
-                Zaproś użytkownika
-              </h3>
-              <form onSubmit={handleInvite} className="space-y-2">
-                <div>
-                  <input
-                    type="email"
-                    placeholder="Adres email"
-                    value={inviteEmail}
-                    onChange={(e) => {
-                      setInviteEmail(e.target.value);
-                      if (inviteEmailError) setInviteEmailError(validateEmail(e.target.value));
-                    }}
-                    onBlur={() => setInviteEmailError(validateEmail(inviteEmail))}
-                    className={`w-full bg-neutral-800 border rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none transition-colors ${
-                      inviteEmailError
-                        ? 'border-red-500 focus:border-red-400'
-                        : 'border-neutral-700 focus:border-blue-500'
-                    }`}
-                    autoComplete="off"
-                  />
-                  {inviteEmailError && (
-                    <p className="text-red-400 text-xs mt-1" role="alert">
-                      {inviteEmailError}
+              {codeError && (
+                <p className="mb-2 text-xs text-red-400" role="alert">
+                  {codeError}
+                </p>
+              )}
+
+              {activeCode ? (
+                <div className="space-y-3 rounded border border-neutral-700 bg-neutral-800 p-4">
+                  <div className="text-center">
+                    <div className="font-mono text-3xl font-bold tracking-[0.3em] text-neutral-100">
+                      {formatCode(activeCode.code)}
+                    </div>
+                    <p className="mt-2 text-xs text-neutral-400">
+                      Wygasa za{' '}
+                      <span
+                        className={`font-mono ${msLeft < 30_000 ? 'text-amber-400' : 'text-neutral-200'}`}
+                      >
+                        {formatCountdown(msLeft)}
+                      </span>
                     </p>
-                  )}
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="h-1 w-full overflow-hidden rounded bg-neutral-700">
+                    <div
+                      className={`h-full transition-all duration-1000 ${
+                        msLeft < 30_000 ? 'bg-amber-500' : 'bg-blue-500'
+                      }`}
+                      style={{ width: `${ttlRatio * 100}%` }}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyCode}
+                      className="rounded border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-neutral-100"
+                    >
+                      {codeCopied ? 'Skopiowano ✓' : 'Kopiuj kod'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRevokeCode}
+                      className="rounded border border-neutral-700 px-3 py-1 text-xs text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-200"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
                 </div>
-                {inviteError && (
-                  <p className="text-red-400 text-xs" role="alert">
-                    {inviteError}
-                  </p>
-                )}
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={inviteBusy || inviteEmail.trim() === ''}
-                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {inviteBusy ? '…' : 'Zaproś'}
-                  </button>
-                </div>
-              </form>
-              {inviteLink && (
-                <div className="mt-3 bg-neutral-800 border border-neutral-700 rounded px-3 py-2">
-                  <p className="text-xs text-neutral-400 mb-1">Link do zaproszenia:</p>
-                  <p className="text-xs text-blue-400 break-all select-all">{inviteLink}</p>
-                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleGenerateCode}
+                  disabled={codeBusy}
+                  className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {codeBusy ? '…' : 'Generuj kod'}
+                </button>
               )}
             </section>
           )}

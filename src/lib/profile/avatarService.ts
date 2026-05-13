@@ -168,10 +168,10 @@ export function getInitials(displayName: string): string {
   const words = displayName.trim().split(/\s+/).filter((w) => w.length > 0);
   if (words.length === 0) return '';
 
-  const first = words[0].charAt(0).toUpperCase();
+  const first = (words[0] ?? '').charAt(0).toUpperCase();
   if (words.length === 1) return first;
 
-  const last = words[words.length - 1].charAt(0).toUpperCase();
+  const last = (words[words.length - 1] ?? '').charAt(0).toUpperCase();
   return first + last;
 }
 

@@ -3,7 +3,6 @@ import { AuthGate } from "@/components/Auth/AuthGate";
 import { LoginPage } from "@/components/Auth/LoginPage";
 import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { ProjectsView } from "./components/ProjectsView";
-import { InviteAcceptView, getInviteTokenFromUrl } from "@/components/Workspace/InviteAcceptView";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
 import { useAuthStore } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -20,7 +19,6 @@ type Tab = "projects" | "dashboard" | "team";
 
 function App() {
   const [tab, setTab] = useState<Tab>("projects");
-  const inviteToken = getInviteTokenFromUrl();
   const authState = useAuthStore((s) => s.state);
 
   // All hooks must be called unconditionally before any early returns.
@@ -74,7 +72,6 @@ function App() {
 
   return (
     <div className="flex h-full flex-col bg-neutral-950">
-      {inviteToken && <InviteAcceptView token={inviteToken} />}
       <nav className="flex shrink-0 items-center gap-1 border-b border-neutral-800 bg-neutral-900 px-3 py-1.5">
         <span className="mr-3 text-xs font-semibold tracking-tight text-neutral-100">
           tracker

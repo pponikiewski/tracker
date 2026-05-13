@@ -3,6 +3,7 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useAuthStore } from '@/store/auth';
 import { WorkspaceCreateModal } from './WorkspaceCreateModal';
 import { WorkspaceSettingsPanel } from './WorkspaceSettingsPanel';
+import { JoinWorkspaceModal } from './JoinWorkspaceModal';
 
 /** Truncate a string to max `n` characters, appending '…' if truncated. */
 function truncate(text: string, n: number): string {
@@ -25,6 +26,7 @@ export function WorkspaceSwitcher() {
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   const isAnonymous = authState.kind === 'anonymous' || authState.kind === 'loading';
@@ -43,6 +45,11 @@ export function WorkspaceSwitcher() {
   const handleNewWorkspace = () => {
     setDropdownOpen(false);
     setShowCreateModal(true);
+  };
+
+  const handleJoinWorkspace = () => {
+    setDropdownOpen(false);
+    setShowJoinModal(true);
   };
 
   const handleSettingsClick = (e: React.MouseEvent) => {
@@ -68,7 +75,7 @@ export function WorkspaceSwitcher() {
         </div>
       )}
 
-      {/* ── Authed, single workspace: name + settings icon ── */}
+      {/* ── Authed, single workspace: name + actions ── */}
       {isAuthed && !hasMultiple && (
         <div className="flex items-center gap-1">
           <span
@@ -77,6 +84,23 @@ export function WorkspaceSwitcher() {
           >
             {displayName}
           </span>
+          <button
+            type="button"
+            onClick={handleJoinWorkspace}
+            title="Dołącz do workspace"
+            className="rounded px-2 py-1 text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+          >
+            Dołącz
+          </button>
+          <button
+            type="button"
+            onClick={handleNewWorkspace}
+            title="Nowy workspace"
+            className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+            aria-label="Nowy workspace"
+          >
+            +
+          </button>
           <button
             type="button"
             onClick={handleSettingsClick}
@@ -174,6 +198,16 @@ export function WorkspaceSwitcher() {
                 <span className="w-3 shrink-0 text-neutral-600">+</span>
                 <span>Nowy workspace</span>
               </button>
+
+              {/* Join workspace by code */}
+              <button
+                type="button"
+                onClick={handleJoinWorkspace}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+              >
+                <span className="w-3 shrink-0 text-neutral-600">#</span>
+                <span>Dołącz do workspace…</span>
+              </button>
             </div>
           )}
         </div>
@@ -182,6 +216,11 @@ export function WorkspaceSwitcher() {
       {/* WorkspaceCreateModal */}
       {showCreateModal && (
         <WorkspaceCreateModal onClose={() => setShowCreateModal(false)} />
+      )}
+
+      {/* JoinWorkspaceModal */}
+      {showJoinModal && (
+        <JoinWorkspaceModal onClose={() => setShowJoinModal(false)} />
       )}
 
       {/* WorkspaceSettingsPanel */}
