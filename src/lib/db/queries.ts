@@ -367,6 +367,7 @@ export interface CreateEventInput {
   notes?: string;
   report?: string;
   workspaceId: string;
+  userId?: string | null;
 }
 
 export async function createEvent(input: CreateEventInput): Promise<string> {
@@ -375,8 +376,8 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
     const ts = now();
     await db.execute(
       `INSERT INTO events
-         (id, resource_id, date, minutes, goal, topics, notes, report, workspace_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
+         (id, resource_id, date, minutes, goal, topics, notes, report, workspace_id, user_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
       [
         id,
         input.resourceId,
@@ -387,6 +388,7 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
         input.notes ?? null,
         input.report ?? null,
         input.workspaceId,
+        input.userId ?? null,
         ts,
       ],
     );

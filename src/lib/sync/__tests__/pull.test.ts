@@ -10,7 +10,7 @@ const mkResource = (id: string, updated_at: number, name = id): Resource => ({
 
 const mkEvent = (id: string, updated_at: number, minutes = 60): TimeEvent => ({
   id, resource_id: 'r1', date: '2026-01-01', minutes,
-  goal: null, topics: null, notes: null, report: null,
+  goal: null, topics: null, notes: null, report: null, user_id: null,
   created_at: 1, updated_at, deleted_at: null,
 });
 

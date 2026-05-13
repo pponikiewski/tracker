@@ -23,6 +23,7 @@ export interface TimeEvent {
   topics: string | null;
   notes: string | null;
   report: string | null;
+  user_id: string | null;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;

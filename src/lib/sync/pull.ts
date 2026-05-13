@@ -47,6 +47,7 @@ function cloudToLocalEvent(c: Record<string, unknown>): TimeEvent {
     topics: (c.topics as string | null) ?? null,
     notes: (c.notes as string | null) ?? null,
     report: (c.report as string | null) ?? null,
+    user_id: (c.user_id as string | null) ?? null,
     created_at: toMs(c.created_at),
     updated_at: toMs(c.updated_at),
     deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
@@ -346,14 +347,15 @@ export async function runInitialPull(userId: string): Promise<void> {
     }
     for (const e of eMerge.writeSqlite) {
       await db.execute(
-        `INSERT INTO events (id, resource_id, date, minutes, goal, topics, notes, report, created_at, updated_at, deleted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        `INSERT INTO events (id, resource_id, date, minutes, goal, topics, notes, report, user_id, created_at, updated_at, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT(id) DO UPDATE SET
            resource_id=excluded.resource_id, date=excluded.date, minutes=excluded.minutes,
            goal=excluded.goal, topics=excluded.topics, notes=excluded.notes, report=excluded.report,
+           user_id=excluded.user_id,
            created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
         [
-          e.id, e.resource_id, e.date, e.minutes, e.goal, e.topics, e.notes, e.report,
+          e.id, e.resource_id, e.date, e.minutes, e.goal, e.topics, e.notes, e.report, e.user_id,
           e.created_at, e.updated_at, e.deleted_at,
         ],
       );

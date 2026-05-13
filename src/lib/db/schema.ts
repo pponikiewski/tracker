@@ -129,6 +129,7 @@ CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at);
  * Adds:
  *   - assignments table with indexes
  *   - profiles_cache table
+ *   - user_id column to events table (for team analytics attribution)
  *   - Recreates sync_outbox with extended entity CHECK constraint
  *     ('assignment' added alongside 'resource', 'event', 'workspace', 'workspace_membership').
  *

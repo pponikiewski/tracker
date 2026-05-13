@@ -143,6 +143,11 @@ export async function runPhase6Migration(db: Database): Promise<void> {
     cached_at    INTEGER NOT NULL
   )`);
 
+  // Step 2b: Add user_id column to events table for team analytics attribution
+  // SQLite allows adding a nullable column without a default value restriction.
+  // Existing events (created before Phase 6) will have NULL user_id.
+  await db.execute(`ALTER TABLE events ADD COLUMN user_id TEXT`);
+
   // Step 3: Recreate sync_outbox with extended entity CHECK constraint to include 'assignment'
   await db.execute(`CREATE TABLE IF NOT EXISTS sync_outbox_new (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
