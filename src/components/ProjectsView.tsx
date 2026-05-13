@@ -5,7 +5,7 @@ import { useAssignmentStore } from "@/store/assignments";
 import { useProfileStore } from "@/store/profile";
 import { useAuthStore } from "@/store/auth";
 import { TreeView } from "./Tree/TreeView";
-import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { ContextMenu, type MenuEntry, type AssignMenuItem } from "./ContextMenu";
 import { PromptModal } from "./PromptModal";
 import { ColorPickerModal } from "./ColorPickerModal";
 import { LogWorkModal } from "./LogWorkModal";
@@ -383,6 +383,18 @@ export function ProjectsView() {
       label: "Zmień nazwę (F2)",
       onClick: () => setRenamingId(node.id),
     });
+
+    // "Assign members" — only available in non-local workspaces (Requirement 5.10)
+    if (!isLocalWorkspace && activeWorkspaceId) {
+      const assignItem: AssignMenuItem = {
+        label: "Przypisz członków",
+        assignAction: true,
+        resourceId: node.id,
+        workspaceId: activeWorkspaceId,
+      };
+      items.push(assignItem);
+    }
+
     items.push({ separator: true });
 
     items.push({
