@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { AuthGate } from "@/components/Auth/AuthGate";
+import { LoginPage } from "@/components/Auth/LoginPage";
 import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { ProjectsView } from "./components/ProjectsView";
 import { InviteAcceptView, getInviteTokenFromUrl } from "@/components/Workspace/InviteAcceptView";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
+import { useAuthStore } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
 
 const DashboardView = lazy(() =>
@@ -19,9 +21,9 @@ type Tab = "projects" | "dashboard" | "team";
 function App() {
   const [tab, setTab] = useState<Tab>("projects");
   const inviteToken = getInviteTokenFromUrl();
+  const authState = useAuthStore((s) => s.state);
 
-  // Determine whether the Team tab should be visible (Requirement 6.1, 9.5):
-  // show only when the active workspace has more than 1 member.
+  // All hooks must be called unconditionally before any early returns.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const memberships = useWorkspaceStore((s) => s.memberships);
   const activeMemberCount = memberships.filter(
@@ -55,6 +57,20 @@ function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [showTeamTab]);
+
+  // Show full-screen spinner while Supabase session is being resolved.
+  if (authState.kind === "loading") {
+    return (
+      <div className="flex h-full items-center justify-center bg-neutral-950">
+        <span className="text-sm text-neutral-500">Ładowanie…</span>
+      </div>
+    );
+  }
+
+  // Show login page when not authenticated.
+  if (authState.kind === "anonymous") {
+    return <LoginPage />;
+  }
 
   return (
     <div className="flex h-full flex-col bg-neutral-950">

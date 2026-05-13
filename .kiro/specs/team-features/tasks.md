@@ -236,7 +236,7 @@ Implement team collaboration capabilities on top of the Phase 5 workspace founda
     - Load all assignments for the workspace
     - _Requirements: 4.2, 5.1, 6.9_
 
-- [-] 17. Final checkpoint — Ensure all tests pass
+- [x] 17. Final checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
