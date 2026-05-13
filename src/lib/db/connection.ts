@@ -105,12 +105,70 @@ export async function runPhase5Migration(db: Database): Promise<void> {
   );
 }
 
+/**
+ * Runs the Phase 6 team-features migration idempotently.
+ *
+ * Checks whether the `assignments` table already exists via
+ * PRAGMA table_info('assignments'). If it does, the migration has already
+ * been applied and we skip it. Otherwise we execute each DDL/DML statement
+ * individually (same approach as runPhase5Migration — DDL causes implicit
+ * commits in SQLite so we avoid wrapping in an explicit transaction).
+ */
+export async function runPhase6Migration(db: Database): Promise<void> {
+  // Check idempotency: does the assignments table already exist?
+  type PragmaRow = { name: string };
+  const columns = await db.select<PragmaRow[]>("PRAGMA table_info('assignments')");
+  if (columns.length > 0) return;
+
+  // Step 1: Create assignments table and indexes
+  await db.execute(`CREATE TABLE IF NOT EXISTS assignments (
+    id           TEXT PRIMARY KEY,
+    resource_id  TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    user_id      TEXT NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    deleted_at   INTEGER
+  )`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_resource  ON assignments(resource_id)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_user      ON assignments(user_id)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_workspace ON assignments(workspace_id)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_active    ON assignments(deleted_at) WHERE deleted_at IS NULL`);
+
+  // Step 2: Create profiles_cache table
+  await db.execute(`CREATE TABLE IF NOT EXISTS profiles_cache (
+    user_id      TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    avatar_url   TEXT,
+    cached_at    INTEGER NOT NULL
+  )`);
+
+  // Step 3: Recreate sync_outbox with extended entity CHECK constraint to include 'assignment'
+  await db.execute(`CREATE TABLE IF NOT EXISTS sync_outbox_new (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity        TEXT NOT NULL CHECK (entity IN ('resource','event','workspace','workspace_membership','assignment')),
+    entity_id     TEXT NOT NULL,
+    op            TEXT NOT NULL CHECK (op IN ('upsert','delete')),
+    payload       TEXT NOT NULL,
+    enqueued_at   INTEGER NOT NULL,
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    next_retry_at INTEGER
+  )`);
+  await db.execute(`INSERT INTO sync_outbox_new (id, entity, entity_id, op, payload, enqueued_at, attempts, last_error, next_retry_at)
+    SELECT id, entity, entity_id, op, payload, enqueued_at, attempts, last_error, next_retry_at FROM sync_outbox`);
+  await db.execute(`DROP TABLE sync_outbox`);
+  await db.execute(`ALTER TABLE sync_outbox_new RENAME TO sync_outbox`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at)`);
+}
+
 export async function getDb(): Promise<Database> {
   if (cached) return cached;
   const db = await Database.load(DB_URL);
   await db.execute("PRAGMA foreign_keys = ON");
   await db.execute(SCHEMA_SQL);
   await runPhase5Migration(db);
+  await runPhase6Migration(db);
   cached = db;
   return db;
 }
