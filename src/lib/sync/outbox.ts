@@ -4,6 +4,22 @@ import type { Entity, Op } from './types';
 const MAX_ERR_LEN = 1024;
 const MAX_BACKOFF_MS = 5 * 60 * 1000; // 300000ms = 5 min
 
+/**
+ * Returns true if the given workspace_id belongs to a Local_Personal_Workspace
+ * (owner_id = 'local'). Such workspaces are intentionally never synced to
+ * Supabase — their rows are handled only in local SQLite.
+ */
+async function isLocalWorkspaceId(
+  db: Database,
+  workspaceId: string,
+): Promise<boolean> {
+  const rows = await db.select<Array<{ owner_id: string }>>(
+    `SELECT owner_id FROM workspaces WHERE id = $1 LIMIT 1`,
+    [workspaceId],
+  );
+  return rows[0]?.owner_id === 'local';
+}
+
 export async function enqueue(
   db: Database,
   entity: Entity,
@@ -11,6 +27,13 @@ export async function enqueue(
   op: Op,
   data: Record<string, unknown>,
 ): Promise<void> {
+  // Skip rows owned by Local_Personal_Workspace — they must never reach Supabase
+  // (they would hit RLS and spin forever in retry).
+  const wsId = data.workspace_id as string | undefined;
+  if (wsId && (await isLocalWorkspaceId(db, wsId))) {
+    return;
+  }
+
   await db.execute(
     `INSERT INTO sync_outbox (entity, entity_id, op, payload, enqueued_at)
      VALUES ($1, $2, $3, $4, $5)`,

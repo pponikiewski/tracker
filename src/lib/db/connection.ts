@@ -167,6 +167,53 @@ export async function runPhase6Migration(db: Database): Promise<void> {
   await db.execute(`CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at)`);
 }
 
+/**
+ * One-shot cleanup: removes sync_outbox rows whose payload targets a
+ * Local_Personal_Workspace (owner_id = 'local'). Those rows must never reach
+ * Supabase — they trigger RLS denials and loop forever in retry.
+ *
+ * Safe to run on every startup; it is a no-op when the outbox is clean.
+ */
+async function purgeLocalOutboxRows(db: Database): Promise<void> {
+  // Collect workspace ids that are marked as local in the local SQLite copy.
+  const localWs = await db.select<Array<{ id: string }>>(
+    `SELECT id FROM workspaces WHERE owner_id = 'local'`,
+  );
+  if (localWs.length === 0) return;
+
+  const localIds = new Set(localWs.map((r) => r.id));
+
+  // Pull all outbox rows with a workspace_id in the payload and delete the
+  // ones pointing at a local workspace. We iterate client-side because the
+  // payload is TEXT JSON and SQLite's json functions aren't guaranteed to be
+  // enabled in every Tauri build.
+  const rows = await db.select<Array<{ id: number; payload: string }>>(
+    `SELECT id, payload FROM sync_outbox`,
+  );
+  const toDelete: number[] = [];
+  for (const row of rows) {
+    try {
+      const obj = JSON.parse(row.payload) as { workspace_id?: string };
+      if (obj.workspace_id && localIds.has(obj.workspace_id)) {
+        toDelete.push(row.id);
+      }
+    } catch {
+      // Ignore malformed payloads — they'll fail elsewhere.
+    }
+  }
+
+  if (toDelete.length > 0) {
+    const placeholders = toDelete.map((_, i) => `$${i + 1}`).join(',');
+    await db.execute(
+      `DELETE FROM sync_outbox WHERE id IN (${placeholders})`,
+      toDelete,
+    );
+    console.info(
+      `[sync] purged ${toDelete.length} outbox row(s) targeting Local_Personal_Workspace.`,
+    );
+  }
+}
+
 export async function getDb(): Promise<Database> {
   if (cached) return cached;
   const db = await Database.load(DB_URL);
@@ -174,6 +221,7 @@ export async function getDb(): Promise<Database> {
   await db.execute(SCHEMA_SQL);
   await runPhase5Migration(db);
   await runPhase6Migration(db);
+  await purgeLocalOutboxRows(db);
   cached = db;
   return db;
 }
