@@ -122,3 +122,68 @@ ALTER TABLE sync_outbox_new RENAME TO sync_outbox;
 
 CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at);
 `;
+
+/**
+ * SQLite schema migration for Faza 6 — Team Features.
+ *
+ * Adds:
+ *   - assignments table with indexes
+ *   - profiles_cache table
+ *   - Recreates sync_outbox with extended entity CHECK constraint
+ *     ('assignment' added alongside 'resource', 'event', 'workspace', 'workspace_membership').
+ *
+ * NOTE: SQLite does not support ALTER TABLE … ALTER COLUMN / ADD CONSTRAINT,
+ * so sync_outbox is recreated via CREATE … INSERT SELECT … DROP … RENAME.
+ *
+ * This constant is intentionally separate from SCHEMA_V5_SQL so that existing
+ * installations are not affected. connection.ts applies it as a conditional
+ * migration guarded by PRAGMA table_info('assignments').
+ */
+export const SCHEMA_V6_SQL = `
+CREATE TABLE IF NOT EXISTS assignments (
+  id           TEXT PRIMARY KEY,
+  resource_id  TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+  user_id      TEXT NOT NULL,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  deleted_at   INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_resource  ON assignments(resource_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_user      ON assignments(user_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_workspace ON assignments(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_active    ON assignments(deleted_at) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS profiles_cache (
+  user_id      TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  avatar_url   TEXT,
+  cached_at    INTEGER NOT NULL
+);
+
+-- Recreate sync_outbox with extended entity CHECK constraint to include 'assignment'.
+-- The guard (PRAGMA table_info('assignments') check) is handled by connection.ts before
+-- calling this SQL, so here we always perform the recreation.
+CREATE TABLE sync_outbox_new (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity        TEXT NOT NULL CHECK (entity IN ('resource','event','workspace','workspace_membership','assignment')),
+  entity_id     TEXT NOT NULL,
+  op            TEXT NOT NULL CHECK (op IN ('upsert','delete')),
+  payload       TEXT NOT NULL,
+  enqueued_at   INTEGER NOT NULL,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  last_error    TEXT,
+  next_retry_at INTEGER
+);
+
+INSERT INTO sync_outbox_new
+  SELECT id, entity, entity_id, op, payload, enqueued_at, attempts, last_error, next_retry_at
+  FROM sync_outbox;
+
+DROP TABLE sync_outbox;
+
+ALTER TABLE sync_outbox_new RENAME TO sync_outbox;
+
+CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at);
+`;
