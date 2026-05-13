@@ -25,6 +25,8 @@ export interface TreeContext extends TreeCallbacks {
   renamingId: string | null;
   draggingId: string | null;
   dropTargetId: string | null;
+  /** IDs of ancestor nodes that should be shown at reduced opacity (0.5) when a filter is active */
+  dimmedIds?: Set<string>;
 }
 
 interface Props extends TreeContext {
@@ -42,12 +44,13 @@ const TYPE_LABEL: Record<string, string> = {
 const MAX_VISIBLE_ASSIGNEES = 3;
 
 export function TreeNode(props: Props) {
-  const { node, depth, expandedIds, selectedId, renamingId, draggingId, dropTargetId } = props;
+  const { node, depth, expandedIds, selectedId, renamingId, draggingId, dropTargetId, dimmedIds } = props;
   const expanded = expandedIds.has(node.id);
   const selected = selectedId === node.id;
   const renaming = renamingId === node.id;
   const isDropTarget = dropTargetId === node.id;
   const isDragging = draggingId === node.id;
+  const isDimmed = dimmedIds?.has(node.id) ?? false;
   const hasChildren = node.children.length > 0;
 
   const getAssignees = useAssignmentStore((s) => s.getAssignees);
@@ -81,7 +84,7 @@ export function TreeNode(props: Props) {
             : selected
               ? "bg-blue-900/40"
               : "hover:bg-neutral-800/60"
-        } ${isDragging ? "opacity-40" : ""}`}
+        } ${isDragging ? "opacity-40" : isDimmed ? "opacity-50" : ""}`}
         style={{ paddingLeft: 8 + depth * 16 }}
       >
         <button

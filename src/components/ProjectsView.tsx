@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/store/projects";
+import { useWorkspaceStore } from "@/store/workspace";
+import { useAssignmentStore } from "@/store/assignments";
+import { useProfileStore } from "@/store/profile";
+import { useAuthStore } from "@/store/auth";
 import { TreeView } from "./Tree/TreeView";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { PromptModal } from "./PromptModal";
 import { ColorPickerModal } from "./ColorPickerModal";
 import { LogWorkModal } from "./LogWorkModal";
-import { canParent, defaultChildType, type Resource, type ResourceType } from "@/lib/db/types";
+import { canParent, defaultChildType, type Resource, type ResourceNode, type ResourceType } from "@/lib/db/types";
 import { isDescendantPath } from "@/lib/utils/tree";
 
 const TYPE_LABEL: Record<ResourceType, string> = {
@@ -14,6 +18,9 @@ const TYPE_LABEL: Record<ResourceType, string> = {
   substage: "Podetap",
   task: "Zadanie",
 };
+
+/** Filter value: 'all' = no filter, 'me' = assigned to current user, or a specific user_id */
+type AssignmentFilter = "all" | "me" | string;
 
 interface MenuState {
   x: number;
@@ -32,6 +39,80 @@ const isEditableTarget = (el: EventTarget | null): boolean => {
   const tag = el.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
 };
+
+/**
+ * Collect all node IDs in the subtree rooted at `node` that have the given userId as an assignee.
+ * Returns a set of matching resource IDs.
+ */
+function collectMatchingIds(
+  node: ResourceNode,
+  userId: string,
+  assignmentsByResource: Record<string, string[]>,
+): Set<string> {
+  const result = new Set<string>();
+  const assignees = assignmentsByResource[node.id] ?? [];
+  if (assignees.includes(userId)) {
+    result.add(node.id);
+  }
+  for (const child of node.children) {
+    for (const id of collectMatchingIds(child, userId, assignmentsByResource)) {
+      result.add(id);
+    }
+  }
+  return result;
+}
+
+/**
+ * Given a tree and a set of directly-matched IDs, compute:
+ * - `visibleIds`: IDs that should be shown (matched + ancestors)
+ * - `dimmedIds`: ancestor IDs that should be shown at reduced opacity
+ *
+ * Returns null if the filter is 'all' (no filtering needed).
+ */
+function computeFilteredSets(
+  tree: ResourceNode[],
+  matchedIds: Set<string>,
+): { visibleIds: Set<string>; dimmedIds: Set<string> } {
+  const visibleIds = new Set<string>();
+  const dimmedIds = new Set<string>();
+
+  function walk(node: ResourceNode): boolean {
+    const isMatch = matchedIds.has(node.id);
+    let childMatched = false;
+    for (const child of node.children) {
+      if (walk(child)) childMatched = true;
+    }
+    if (isMatch || childMatched) {
+      visibleIds.add(node.id);
+      if (!isMatch && childMatched) {
+        // Ancestor node — show at reduced opacity
+        dimmedIds.add(node.id);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  for (const node of tree) {
+    walk(node);
+  }
+
+  return { visibleIds, dimmedIds };
+}
+
+/**
+ * Filter a tree to only include nodes whose IDs are in `visibleIds`.
+ * Preserves tree structure (ancestors are kept even if not directly matched).
+ */
+function filterTree(nodes: ResourceNode[], visibleIds: Set<string>): ResourceNode[] {
+  const result: ResourceNode[] = [];
+  for (const node of nodes) {
+    if (!visibleIds.has(node.id)) continue;
+    const filteredChildren = filterTree(node.children, visibleIds);
+    result.push({ ...node, children: filteredChildren });
+  }
+  return result;
+}
 
 export function ProjectsView() {
   const {
@@ -53,6 +134,14 @@ export function ProjectsView() {
     logTime,
   } = useProjects();
 
+  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const memberships = useWorkspaceStore((s) => s.memberships);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const activeWorkspace = allWorkspaces.find((w) => w.id === activeWorkspaceId) ?? null;
+  const assignmentsByResource = useAssignmentStore((s) => s.assignmentsByResource);
+  const getProfile = useProfileStore((s) => s.getProfile);
+  const authState = useAuthStore((s) => s.state);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -61,6 +150,62 @@ export function ProjectsView() {
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [colorTargetId, setColorTargetId] = useState<string | null>(null);
   const [logWorkResource, setLogWorkResource] = useState<Resource | null>(null);
+
+  // Assignment filter state — reset to 'all' on workspace change
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all");
+
+  // Detect Local_Personal_Workspace (owner_id === 'local')
+  const isLocalWorkspace = activeWorkspace?.owner_id === "local";
+
+  // Reset filter when workspace changes
+  useEffect(() => {
+    setAssignmentFilter("all");
+  }, [activeWorkspaceId]);
+
+  // Resolve the effective user ID for the current filter
+  const currentUserId = authState.kind === "authed" ? authState.user.id : null;
+  const effectiveFilterUserId = useMemo((): string | null => {
+    if (assignmentFilter === "all") return null;
+    if (assignmentFilter === "me") return currentUserId;
+    return assignmentFilter;
+  }, [assignmentFilter, currentUserId]);
+
+  // Compute filtered tree and dimmed IDs
+  const { filteredTree, dimmedIds, hasMatches } = useMemo(() => {
+    if (effectiveFilterUserId === null) {
+      return { filteredTree: tree, dimmedIds: new Set<string>(), hasMatches: true };
+    }
+    const matchedIds = new Set<string>();
+    for (const node of tree) {
+      for (const id of collectMatchingIds(node, effectiveFilterUserId, assignmentsByResource)) {
+        matchedIds.add(id);
+      }
+    }
+    if (matchedIds.size === 0) {
+      return { filteredTree: [], dimmedIds: new Set<string>(), hasMatches: false };
+    }
+    const { visibleIds, dimmedIds: dIds } = computeFilteredSets(tree, matchedIds);
+    const ft = filterTree(tree, visibleIds);
+    return { filteredTree: ft, dimmedIds: dIds, hasMatches: true };
+  }, [tree, effectiveFilterUserId, assignmentsByResource]);
+
+  // Build member list for the filter dropdown (workspace members excluding current user for "me" option)
+  const workspaceMembers = useMemo(() => {
+    return memberships.map((m) => ({
+      userId: m.user_id,
+      displayName: getProfile(m.user_id).display_name,
+    }));
+  }, [memberships, getProfile]);
+
+  // Label for the empty-state message
+  const emptyStateLabel = useMemo(() => {
+    if (assignmentFilter === "me") return "Assigned to me";
+    if (assignmentFilter !== "all") {
+      const member = workspaceMembers.find((m) => m.userId === assignmentFilter);
+      return member ? member.displayName : assignmentFilter;
+    }
+    return "";
+  }, [assignmentFilter, workspaceMembers]);
 
   useEffect(() => {
     void refresh();
@@ -308,38 +453,69 @@ export function ProjectsView() {
         </div>
       )}
 
+      {/* Assignment filter bar — hidden for Local_Personal_Workspace */}
+      {!isLocalWorkspace && (
+        <div className="flex items-center gap-2 border-b border-neutral-800 px-4 py-1.5">
+          <span className="text-xs text-neutral-500">Filtr:</span>
+          <select
+            value={assignmentFilter}
+            onChange={(e) => setAssignmentFilter(e.target.value as AssignmentFilter)}
+            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs text-neutral-200 focus:border-blue-500 focus:outline-none"
+            aria-label="Filtr przypisania"
+          >
+            <option value="all">Wszyscy członkowie</option>
+            <option value="me">Przypisane do mnie</option>
+            {workspaceMembers
+              .filter((m) => m.userId !== currentUserId)
+              .map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+
       <main className="flex-1 overflow-auto">
-        <TreeView
-          tree={tree}
-          expandedIds={expandedIds}
-          selectedId={selectedId}
-          renamingId={renamingId}
-          draggingId={draggingId}
-          dropTargetId={dropTargetId}
-          onToggle={toggleExpanded}
-          onSelect={setSelectedId}
-          onContextMenu={handleContextNode}
-          onContextMenuEmpty={handleContextEmpty}
-          onDragOverEmpty={handleDragOverEmpty}
-          onDropEmpty={handleDropEmpty}
-          onLogWork={(id) => {
-            const r = findResource(id);
-            if (r) setLogWorkResource(r);
-          }}
-          onStartRename={setRenamingId}
-          onCommitRename={async (id, name) => {
-            await rename(id, name);
-            setRenamingId(null);
-          }}
-          onCancelRename={() => setRenamingId(null)}
-          onDragStart={(id) => setDraggingId(id)}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onDragEnd={() => {
-            setDraggingId(null);
-            setDropTargetId(null);
-          }}
-        />
+        {!hasMatches ? (
+          <div className="px-4 py-12 text-center text-sm text-neutral-500">
+            Brak zasobów przypisanych do{" "}
+            <span className="text-neutral-300">{emptyStateLabel}</span>.
+          </div>
+        ) : (
+          <TreeView
+            tree={filteredTree}
+            expandedIds={expandedIds}
+            selectedId={selectedId}
+            renamingId={renamingId}
+            draggingId={draggingId}
+            dropTargetId={dropTargetId}
+            dimmedIds={dimmedIds}
+            onToggle={toggleExpanded}
+            onSelect={setSelectedId}
+            onContextMenu={handleContextNode}
+            onContextMenuEmpty={handleContextEmpty}
+            onDragOverEmpty={handleDragOverEmpty}
+            onDropEmpty={handleDropEmpty}
+            onLogWork={(id) => {
+              const r = findResource(id);
+              if (r) setLogWorkResource(r);
+            }}
+            onStartRename={setRenamingId}
+            onCommitRename={async (id, name) => {
+              await rename(id, name);
+              setRenamingId(null);
+            }}
+            onCancelRename={() => setRenamingId(null)}
+            onDragStart={(id) => setDraggingId(id)}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onDragEnd={() => {
+              setDraggingId(null);
+              setDropTargetId(null);
+            }}
+          />
+        )}
       </main>
 
       <footer className="border-t border-neutral-800 px-4 py-1.5 text-[10px] text-neutral-500">
