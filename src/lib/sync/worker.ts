@@ -205,6 +205,24 @@ async function flushEntity(
     .upsert(toPush.map((x) => x.mapped), { onConflict: 'id' });
 
   if (error) {
+    // Gracefully drop rows targeting a table that does not exist in Supabase
+    // (e.g. assignments before the Phase 6 migration has been applied).
+    // Without this guard every tick would re-push and re-fail with 404.
+    const code = (error as { code?: string }).code;
+    const msg = error.message?.toLowerCase() ?? '';
+    const missingTable =
+      code === 'PGRST205' ||
+      code === '42P01' ||
+      msg.includes('could not find the table') ||
+      msg.includes('relation') && msg.includes('does not exist');
+    if (missingTable) {
+      console.warn(
+        `[sync] target table "${table}" is missing in Supabase — dropping ${toPush.length} queued row(s). ` +
+          `Apply the relevant migration to enable sync for this entity.`,
+      );
+      outcome.deletableIds = [...toPush.map((x) => x.row.id), ...supersededIds];
+      return outcome;
+    }
     // Req 6.7: failure — bump retry on latest ids only, do NOT delete superseded
     outcome.failedIds = toPush.map((x) => x.row.id);
     outcome.errorMessage = error.message;

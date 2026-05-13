@@ -1,22 +1,9 @@
 import { getDb } from "./connection";
 import type { Workspace, WorkspaceMembership } from "./types";
 import { enqueue } from "@/lib/sync/outbox";
+import { withTx } from "./tx";
 
 const now = () => Date.now();
-
-// Transaction helper — wraps fn in BEGIN/COMMIT, rolls back on error
-async function withTx<T>(fn: (db: Awaited<ReturnType<typeof getDb>>) => Promise<T>): Promise<T> {
-  const db = await getDb();
-  await db.execute("BEGIN");
-  try {
-    const result = await fn(db);
-    await db.execute("COMMIT");
-    return result;
-  } catch (e) {
-    await db.execute("ROLLBACK");
-    throw e;
-  }
-}
 
 // ---- Read queries (no transaction needed) ----
 

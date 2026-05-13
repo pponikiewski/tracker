@@ -22,10 +22,15 @@ const SIZE_CLASSES: Record<NonNullable<AvatarBadgeProps['size']>, string> = {
 export function AvatarBadge({ userId, displayName, avatarUrl, size = 'sm' }: AvatarBadgeProps) {
   const sizeClass = SIZE_CLASSES[size];
 
-  if (avatarUrl) {
+  // Guard against empty strings / whitespace (would cause <img src=""> to fire
+  // a request to the page origin and produce confusing 404s).
+  const safeUrl =
+    typeof avatarUrl === 'string' && avatarUrl.trim().length > 0 ? avatarUrl : null;
+
+  if (safeUrl) {
     return (
       <img
-        src={avatarUrl}
+        src={safeUrl}
         alt={displayName}
         className={`${sizeClass} rounded-full object-cover shrink-0`}
       />

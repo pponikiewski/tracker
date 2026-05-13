@@ -294,6 +294,19 @@ export async function runInitialPull(userId: string): Promise<void> {
     return;
   }
 
+// Treat "table not found" / "relation does not exist" errors as benign and
+// return an empty result set so Phase 5 users (without the Phase 6 tables
+// `assignments` and `profiles`) are not blocked by initial-pull failures.
+type SbError = { code?: string; message?: string } | null;
+function isMissingTable(err: SbError): boolean {
+  if (!err) return false;
+  return (
+    err.code === 'PGRST205' ||
+    err.code === '42P01' ||
+    (err.message?.toLowerCase().includes('could not find the table') ?? false)
+  );
+}
+
   // Step 6: Fetch resources + events + assignments (Req 8.4)
   const [
     { data: cloudR, error: errR },
@@ -305,9 +318,25 @@ export async function runInitialPull(userId: string): Promise<void> {
     supabase.from('assignments').select('*'),
   ]);
 
-  if (errR || errE || errA) {
-    // Req 8.9: leave local data unchanged, set error, do NOT mark as pulled (allow retry)
-    auth.setSyncStatus({ kind: 'error', message: (errR ?? errE ?? errA)!.message });
+  // assignments is optional — degrade gracefully when the Phase 6 table is
+  // missing instead of aborting the whole pull.
+  const assignmentsMissing = isMissingTable(errA);
+  if (assignmentsMissing) {
+    console.warn(
+      '[sync] `assignments` table not found in Supabase — skipping assignment sync. ' +
+        'Run the Phase 6 migration to enable team assignments.',
+    );
+  }
+
+  const errRWithoutMissing = isMissingTable(errR) ? null : errR;
+  const errEWithoutMissing = isMissingTable(errE) ? null : errE;
+  const errAWithoutMissing = assignmentsMissing ? null : errA;
+
+  if (errRWithoutMissing || errEWithoutMissing || errAWithoutMissing) {
+    auth.setSyncStatus({
+      kind: 'error',
+      message: (errRWithoutMissing ?? errEWithoutMissing ?? errAWithoutMissing)!.message,
+    });
     return;
   }
 
@@ -322,13 +351,17 @@ export async function runInitialPull(userId: string): Promise<void> {
   const cloudEloc = (cloudE ?? []).map((c) =>
     cloudToLocalEvent(c as Record<string, unknown>),
   );
-  const cloudAloc = (cloudA ?? []).map((c) =>
-    cloudToLocalAssignment(c as Record<string, unknown>),
-  );
+  const cloudAloc = assignmentsMissing
+    ? []
+    : (cloudA ?? []).map((c) => cloudToLocalAssignment(c as Record<string, unknown>));
 
   const rMerge = lwwMerge(localR, cloudRloc);
   const eMerge = lwwMerge(localE, cloudEloc);
-  const aMerge = lwwMerge(localA, cloudAloc);
+  // When the cloud `assignments` table is missing, skip the merge entirely so
+  // we don't enqueue local-wins that would all fail with 404 on push.
+  const aMerge = assignmentsMissing
+    ? { writeSqlite: [] as Assignment[], pushOutbox: [] as Assignment[] }
+    : lwwMerge(localA, cloudAloc);
 
   try {
     for (const r of rMerge.writeSqlite) {

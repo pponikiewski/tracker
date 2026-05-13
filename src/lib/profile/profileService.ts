@@ -82,6 +82,12 @@ export async function upsertProfile(userId: string, displayName: string): Promis
 export async function fetchAndCacheProfiles(userIds: string[]): Promise<CachedProfile[]> {
   if (userIds.length === 0) return [];
 
+  // Filter to syntactically valid UUIDs. Supabase rejects anything else with
+  // a 400 (e.g. the local-workspace sentinel 'local').
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validIds = userIds.filter((id) => UUID_RE.test(id));
+  if (validIds.length === 0) return [];
+
   if (!supabase) {
     throw new Error('Supabase is not configured — cannot fetch profiles.');
   }
@@ -89,7 +95,7 @@ export async function fetchAndCacheProfiles(userIds: string[]): Promise<CachedPr
   const { data, error } = await supabase
     .from('profiles')
     .select('user_id, display_name, avatar_url, updated_at')
-    .in('user_id', userIds);
+    .in('user_id', validIds);
 
   if (error) {
     // Degrade gracefully when the `profiles` table does not exist yet in Supabase

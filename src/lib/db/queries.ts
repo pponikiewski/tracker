@@ -3,22 +3,9 @@ import { canParent, type Resource, type ResourceType, type TimeEvent } from "./t
 import { buildPath, isDescendantPath, parentPath } from "../utils/tree";
 import { newId } from "../utils/uuid";
 import { enqueue } from "@/lib/sync/outbox";
+import { withTx } from "./tx";
 
 const now = () => Date.now();
-
-// Transaction helper — wraps fn in BEGIN/COMMIT, rolls back on error
-async function withTx<T>(fn: (db: Awaited<ReturnType<typeof getDb>>) => Promise<T>): Promise<T> {
-  const db = await getDb();
-  await db.execute("BEGIN");
-  try {
-    const result = await fn(db);
-    await db.execute("COMMIT");
-    return result;
-  } catch (e) {
-    await db.execute("ROLLBACK");
-    throw e;
-  }
-}
 
 export async function listActiveResources(workspaceId: string): Promise<Resource[]> {
   const db = await getDb();

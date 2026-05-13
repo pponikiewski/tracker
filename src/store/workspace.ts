@@ -188,7 +188,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       // Requirements: 4.2, 5.1, 6.9
       try {
         const memberships = await workspaceQueries.listMemberships(id);
-        const memberIds = memberships.map((m) => m.user_id);
+        // Exclude pseudo user_ids used by Local_Personal_Workspace — Supabase
+        // expects UUIDs and returns 400 Bad Request for the sentinel 'local'.
+        const memberIds = memberships
+          .map((m) => m.user_id)
+          .filter((uid) => uid !== 'local');
 
         await Promise.all([
           useAssignmentStore.getState().loadAssignments(id),
