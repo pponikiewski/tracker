@@ -23,8 +23,8 @@ let visibilityHandler: (() => void) | null = null;
 
 export function collapseDuplicates(rows: ReadyRow[]): CollapseResult {
   const latest = new Map<string, ReadyRow>();
-  const perEntity: Record<Entity, ReadyRow[]> = { resource: [], event: [], workspace: [], workspace_membership: [] };
-  const supersededIds: Record<Entity, number[]> = { resource: [], event: [], workspace: [], workspace_membership: [] };
+  const perEntity: Record<Entity, ReadyRow[]> = { resource: [], event: [], workspace: [], workspace_membership: [], assignment: [] };
+  const supersededIds: Record<Entity, number[]> = { resource: [], event: [], workspace: [], workspace_membership: [], assignment: [] };
 
   for (const r of rows) {
     const k = `${r.entity}:${r.entity_id}`;
