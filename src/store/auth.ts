@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { ensureProfile } from '@/lib/profile/profileService';
 
 export type AuthState =
   | { kind: 'loading' }
@@ -48,6 +49,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
           session: data.session,
         },
       });
+      // Ensure a profile record exists for the returning user (non-fatal).
+      ensureProfile(data.session.user.id, data.session.user.email ?? '').catch(
+        (err) => console.warn('[auth] ensureProfile failed on init:', err),
+      );
     } else {
       set({ state: { kind: 'anonymous' } });
     }
@@ -64,8 +69,14 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   signIn: async (email, password) => {
     if (!supabase) throw new Error('Supabase not configured');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    // Ensure a profile record exists for the newly signed-in user (non-fatal).
+    if (data.user) {
+      ensureProfile(data.user.id, data.user.email ?? email).catch(
+        (err) => console.warn('[auth] ensureProfile failed on signIn:', err),
+      );
+    }
   },
 
   signUp: async (email, password) => {
