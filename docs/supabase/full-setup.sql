@@ -79,6 +79,7 @@ ALTER TABLE workspace_memberships ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "self_or_member_select" ON workspace_memberships;
 DROP POLICY IF EXISTS "self_insert"           ON workspace_memberships;
+DROP POLICY IF EXISTS "self_update"           ON workspace_memberships;
 DROP POLICY IF EXISTS "owner_or_self_delete"  ON workspace_memberships;
 
 CREATE POLICY "self_or_member_select" ON workspace_memberships
@@ -92,6 +93,12 @@ CREATE POLICY "self_or_member_select" ON workspace_memberships
 -- inserts for other users under SECURITY DEFINER.
 CREATE POLICY "self_insert" ON workspace_memberships
   FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- Needed so upsert() can UPDATE the row when it already exists.
+CREATE POLICY "self_update" ON workspace_memberships
+  FOR UPDATE
+  USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
 CREATE POLICY "owner_or_self_delete" ON workspace_memberships

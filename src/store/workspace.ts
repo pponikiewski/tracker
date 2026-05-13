@@ -10,6 +10,7 @@ import {
   type JoinCode,
 } from '@/lib/workspace/joinCodeService';
 import { useAssignmentStore } from '@/store/assignments';
+import { useAuthStore } from '@/store/auth';
 import { useProfileStore } from '@/store/profile';
 
 // ---- Validation helpers ----
@@ -59,22 +60,17 @@ interface WorkspaceState {
 
 // ---- Internal helpers (need access to store state) ----
 
-// Resolves the current userId from the store's memberships context.
-// We keep a module-level reference to the store so helpers can read state.
-let _getUserId: (() => string | null) | null = null;
+/**
+ * Returns the id of the currently authenticated user, or null if anonymous.
+ * This MUST be the authoritative source — deriving userId from memberships
+ * breaks for users who joined a workspace as a `member` (not `owner`).
+ */
+function getCurrentUserId(): string | null {
+  const authState = useAuthStore.getState().state;
+  return authState.kind === 'authed' ? authState.user.id : null;
+}
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
-  // Register userId accessor for internal helpers
-  _getUserId = () => {
-    // Derive userId from memberships: find the owner of the active workspace
-    const { activeWorkspaceId, memberships } = get();
-    if (!activeWorkspaceId) return null;
-    const ownerMembership = memberships.find(
-      (m) => m.workspace_id === activeWorkspaceId && m.role === 'owner',
-    );
-    return ownerMembership?.user_id ?? null;
-  };
-
   return {
     workspaces: [],
     memberships: [],
@@ -126,13 +122,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       const trimmed = name.trim();
       const id = crypto.randomUUID();
 
-      // Determine current userId from auth store or memberships
-      const userId = _getUserId?.() ?? null;
+      const userId = getCurrentUserId();
       if (!userId) throw new Error('Cannot create workspace: no authenticated user.');
 
-      await workspaceQueries.createWorkspace({ id, name: trimmed, ownerId: userId });
-      await get().refresh();
-      await get().setActiveWorkspace(id);
+      try {
+        await workspaceQueries.createWorkspace({ id, name: trimmed, ownerId: userId });
+        await get().refresh();
+        await get().setActiveWorkspace(id);
+      } catch (err) {
+        // Surface the underlying error so the caller sees something better
+        // than a generic "Nieznany błąd".
+        console.error('[workspace] createWorkspace failed:', err);
+        throw err instanceof Error ? err : new Error(String(err));
+      }
       return id;
     },
 
@@ -159,7 +161,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
           await get().setActiveWorkspace(available[0]!.id);
         } else {
           // No workspaces left — provision a new Personal_Workspace
-          const userId = _getUserId?.() ?? null;
+          const userId = getCurrentUserId();
           if (!userId) throw new Error('Cannot provision workspace: no authenticated user.');
           const newId = crypto.randomUUID();
           await workspaceQueries.createWorkspace({
@@ -177,7 +179,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
     setActiveWorkspace: async (id: string) => {
       set({ activeWorkspaceId: id });
-      const userId = _getUserId?.() ?? null;
+      const userId = getCurrentUserId();
       try {
         localStorage.setItem(lsKey(userId), id);
       } catch {
@@ -334,7 +336,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     // ---- refresh ----
 
     refresh: async () => {
-      const userId = _getUserId?.() ?? null;
+      const userId = getCurrentUserId();
       const workspaces = await workspaceQueries.listWorkspaces();
       const memberships = userId
         ? await workspaceQueries.getUserMemberships(userId)
@@ -343,3 +345,4 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     },
   };
 });
+

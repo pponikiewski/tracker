@@ -1,23 +1,10 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { getDb } from '@/lib/db/connection';
 import { enqueue } from '@/lib/sync/outbox';
+import { withTx } from '@/lib/db/tx';
 import type { Assignment } from '@/lib/db/types';
 
 const now = () => Date.now();
-
-// Transaction helper — wraps fn in BEGIN/COMMIT, rolls back on error
-async function withTx<T>(fn: (db: Awaited<ReturnType<typeof getDb>>) => Promise<T>): Promise<T> {
-  const db = await getDb();
-  await db.execute('BEGIN');
-  try {
-    const result = await fn(db);
-    await db.execute('COMMIT');
-    return result;
-  } catch (e) {
-    await db.execute('ROLLBACK');
-    throw e;
-  }
-}
 
 /**
  * Guards against operations on the Local_Personal_Workspace.

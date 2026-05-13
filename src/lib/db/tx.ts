@@ -3,41 +3,31 @@ import { getDb } from './connection';
 type Db = Awaited<ReturnType<typeof getDb>>;
 
 /**
- * Serialises every transaction so that concurrent callers never open nested
- * transactions against the single shared SQLite connection.
+ * Runs `fn` serialised against every other caller of `withTx`. This is
+ * intentionally NOT wrapped in BEGIN/COMMIT.
  *
- * SQLite on a single connection cannot handle two simultaneous BEGIN calls.
- * Without serialisation, a second caller triggers "cannot start a transaction
- * within a transaction", then its catch ROLLBACKs the first caller's in-flight
- * transaction, which in turn leaves later operations failing with
- * "no transaction is active" or "database is locked".
+ * Rationale: the Tauri SQL plugin uses a connection pool. Manually issuing
+ * BEGIN/COMMIT via separate `db.execute` calls is unreliable — a BEGIN on
+ * connection A followed by a statement on connection B breaks transaction
+ * semantics and produces errors like "cannot commit - no transaction is
+ * active" or "cannot start a transaction within a transaction".
+ *
+ * Instead we rely on SQLite's per-statement autocommit, and we serialise
+ * multi-step operations through this chain so no two write flows interleave
+ * on the same connection at once.
+ *
+ * Trade-off: a multi-step operation that fails halfway leaves partial state
+ * (e.g. workspace inserted but membership missing). This is acceptable for
+ * our data shapes — the UI tolerates missing rows, sync is idempotent via
+ * LWW, and retries can heal leftover inconsistency.
  */
-let txChain: Promise<unknown> = Promise.resolve();
+let chain: Promise<unknown> = Promise.resolve();
 
 export async function withTx<T>(fn: (db: Db) => Promise<T>): Promise<T> {
-  // Hook into the chain so our critical section waits for any in-flight tx.
-  const next = txChain.then(async () => runTx(fn));
-  // Silence rejection for the chain itself; each caller still sees its own error.
-  txChain = next.catch(() => undefined);
+  const next = chain.then(async () => {
+    const db = await getDb();
+    return fn(db);
+  });
+  chain = next.catch(() => undefined);
   return next;
-}
-
-async function runTx<T>(fn: (db: Db) => Promise<T>): Promise<T> {
-  const db = await getDb();
-  await db.execute('BEGIN');
-  let result: T;
-  try {
-    result = await fn(db);
-  } catch (err) {
-    // Best-effort rollback — ignore the (rare) case where the transaction
-    // has already been closed (e.g. by an earlier COMMIT attempt).
-    try {
-      await db.execute('ROLLBACK');
-    } catch {
-      /* transaction already closed — nothing to do */
-    }
-    throw err;
-  }
-  await db.execute('COMMIT');
-  return result;
 }

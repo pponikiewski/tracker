@@ -20,6 +20,9 @@ interface CollapseResult {
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let visibilityHandler: (() => void) | null = null;
+// Mutex so concurrent tick() invocations don't race each other against the
+// single SQLite connection (which would yield "database is locked").
+let tickInFlight: Promise<void> | null = null;
 
 export function collapseDuplicates(rows: ReadyRow[]): CollapseResult {
   const latest = new Map<string, ReadyRow>();
@@ -235,6 +238,20 @@ async function flushEntity(
 }
 
 export async function tick(): Promise<void> {
+  // Serialise concurrent invocations (interval timer + visibility handler
+  // + explicit UI triggers can all fire in parallel).
+  if (tickInFlight) return tickInFlight;
+  tickInFlight = (async () => {
+    try {
+      await tickInternal();
+    } finally {
+      tickInFlight = null;
+    }
+  })();
+  return tickInFlight;
+}
+
+async function tickInternal(): Promise<void> {
   const auth = useAuthStore.getState();
   if (auth.state.kind !== 'authed') return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
