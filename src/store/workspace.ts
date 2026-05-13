@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import * as workspaceQueries from '@/lib/db/workspaceQueries';
 import type { Workspace, WorkspaceMembership, Invite } from '@/lib/db/types';
+import { useAssignmentStore } from '@/store/assignments';
+import { useProfileStore } from '@/store/profile';
 
 // ---- Validation helpers ----
 
@@ -182,6 +184,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       } catch {
         // localStorage may be unavailable in some environments; ignore
       }
+
+      // Load assignments and profiles for the new active workspace
+      // Requirements: 4.2, 5.1, 6.9
+      try {
+        const memberships = await workspaceQueries.listMemberships(id);
+        const memberIds = memberships.map((m) => m.user_id);
+
+        await Promise.all([
+          useAssignmentStore.getState().loadAssignments(id),
+          memberIds.length > 0
+            ? useProfileStore.getState().fetchProfiles(memberIds)
+            : Promise.resolve(),
+        ]);
+      } catch {
+        // Non-fatal: assignments/profiles will be stale but the workspace switch succeeds
+      }
     },
 
     // ---- restoreActiveWorkspace ----
@@ -199,14 +217,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       }
 
       if (restoredId && available.some((w) => w.id === restoredId)) {
-        set({ activeWorkspaceId: restoredId });
+        await get().setActiveWorkspace(restoredId);
         return;
       }
 
       // Fallback: first non-deleted workspace
       if (available.length > 0) {
         const first = available.sort((a, b) => a.created_at - b.created_at)[0]!;
-        set({ activeWorkspaceId: first.id });
+        await get().setActiveWorkspace(first.id);
         return;
       }
 
