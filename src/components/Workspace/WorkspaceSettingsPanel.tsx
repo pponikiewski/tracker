@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useAuthStore } from '@/store/auth';
+import { useProfileStore } from '@/store/profile';
+import { AvatarBadge } from '@/components/Profile/AvatarBadge';
 import type { WorkspaceMembership, Invite } from '@/lib/db/types';
 
 interface WorkspaceSettingsPanelProps {
@@ -20,6 +22,22 @@ function validateEmail(email: string): string | null {
   return null;
 }
 
+/** Skeleton block used while profiles are loading. */
+function MemberSkeleton() {
+  return (
+    <li className="flex items-center justify-between bg-neutral-800 border border-neutral-700 rounded px-3 py-2 animate-pulse">
+      <div className="flex items-center gap-2 min-w-0">
+        {/* Avatar placeholder */}
+        <span className="h-7 w-7 rounded-full bg-neutral-700 shrink-0" />
+        {/* Name placeholder */}
+        <span className="h-3 w-28 rounded bg-neutral-700" />
+        {/* Role badge placeholder */}
+        <span className="h-4 w-14 rounded bg-neutral-700 shrink-0" />
+      </div>
+    </li>
+  );
+}
+
 export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettingsPanelProps) {
   const authState = useAuthStore((s) => s.state);
   const currentUserId = authState.kind === 'authed' ? authState.user.id : null;
@@ -32,6 +50,10 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const cancelInvite = useWorkspaceStore((s) => s.cancelInvite);
   const listInvites = useWorkspaceStore((s) => s.listInvites);
   const deleteWorkspace = useWorkspaceStore((s) => s.deleteWorkspace);
+
+  const fetchProfiles = useProfileStore((s) => s.fetchProfiles);
+  const getProfile = useProfileStore((s) => s.getProfile);
+  const profilesLoading = useProfileStore((s) => s.loading);
 
   const workspace = workspaces.find((w) => w.id === workspaceId) ?? null;
 
@@ -49,6 +71,10 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const workspaceMembers: WorkspaceMembership[] = memberships.filter(
     (m) => m.workspace_id === workspaceId,
   );
+
+  // ---- Profile loading state ----
+  // Track whether we've initiated the profile fetch for this panel open
+  const [profilesFetched, setProfilesFetched] = useState(false);
 
   // ---- Name section state ----
   const [name, setName] = useState(workspace?.name ?? '');
@@ -85,6 +111,24 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
     }
   }, [workspace]);
 
+  // Fetch profiles for all workspace members (and invite inviters) when panel opens
+  useEffect(() => {
+    const memberIds = workspaceMembers.map((m) => m.user_id);
+    if (memberIds.length === 0) {
+      setProfilesFetched(true);
+      return;
+    }
+    setProfilesFetched(false);
+    fetchProfiles(memberIds)
+      .catch(() => {
+        // Silently ignore — getProfile will return fallback values
+      })
+      .finally(() => {
+        setProfilesFetched(true);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
+
   // Load invites for owner
   const loadInvites = useCallback(async () => {
     if (!isOwner) return;
@@ -117,6 +161,16 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
       cancelled = true;
     };
   }, [isOwner, listInvites, workspaceId]);
+
+  // Fetch profiles for inviters once invites are loaded
+  useEffect(() => {
+    if (invites.length === 0) return;
+    const inviterIds = [...new Set(invites.map((i) => i.invited_by))];
+    if (inviterIds.length === 0) return;
+    fetchProfiles(inviterIds).catch(() => {
+      // Silently ignore — getProfile will return fallback values
+    });
+  }, [invites, fetchProfiles]);
 
   // ---- Handlers ----
 
@@ -222,6 +276,9 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const roleLabel = (role: 'owner' | 'member') =>
     role === 'owner' ? 'Właściciel' : 'Członek';
 
+  // True while we're still waiting for the initial profile fetch to settle
+  const membersLoading = !profilesFetched || profilesLoading;
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-start justify-end z-50">
       <div className="bg-neutral-900 border-l border-neutral-700 h-full w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
@@ -310,39 +367,56 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
             )}
             {workspaceMembers.length === 0 ? (
               <p className="text-xs text-neutral-500">Brak członków.</p>
+            ) : membersLoading ? (
+              /* Loading skeletons — Requirement 4.3 */
+              <ul className="space-y-1" aria-busy="true" aria-label="Ładowanie członków…">
+                {workspaceMembers.map((m) => (
+                  <MemberSkeleton key={m.user_id} />
+                ))}
+              </ul>
             ) : (
               <ul className="space-y-1">
-                {workspaceMembers.map((m) => (
-                  <li
-                    key={m.user_id}
-                    className="flex items-center justify-between bg-neutral-800 border border-neutral-700 rounded px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-xs text-neutral-200 truncate">
-                        {m.user_id}
-                      </span>
-                      <span
-                        className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
-                          m.role === 'owner'
-                            ? 'bg-amber-900/50 text-amber-300'
-                            : 'bg-neutral-700 text-neutral-400'
-                        }`}
-                      >
-                        {roleLabel(m.role)}
-                      </span>
-                    </div>
-                    {isOwner && m.user_id !== currentUserId && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMember(m.user_id)}
-                        disabled={removingMemberId === m.user_id}
-                        className="ml-2 text-xs text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-                      >
-                        {removingMemberId === m.user_id ? '…' : 'Usuń'}
-                      </button>
-                    )}
-                  </li>
-                ))}
+                {workspaceMembers.map((m) => {
+                  /* Requirement 4.1, 4.4: show AvatarBadge + display_name; fall back to user_id */
+                  const profile = getProfile(m.user_id);
+                  return (
+                    <li
+                      key={m.user_id}
+                      className="flex items-center justify-between bg-neutral-800 border border-neutral-700 rounded px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <AvatarBadge
+                          userId={m.user_id}
+                          displayName={profile.display_name}
+                          avatarUrl={profile.avatar_url}
+                          size="sm"
+                        />
+                        <span className="text-xs text-neutral-200 truncate">
+                          {profile.display_name}
+                        </span>
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
+                            m.role === 'owner'
+                              ? 'bg-amber-900/50 text-amber-300'
+                              : 'bg-neutral-700 text-neutral-400'
+                          }`}
+                        >
+                          {roleLabel(m.role)}
+                        </span>
+                      </div>
+                      {isOwner && m.user_id !== currentUserId && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(m.user_id)}
+                          disabled={removingMemberId === m.user_id}
+                          className="ml-2 text-xs text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                        >
+                          {removingMemberId === m.user_id ? '…' : 'Usuń'}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
@@ -359,29 +433,36 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                 <p className="text-xs text-neutral-500">Brak oczekujących zaproszeń.</p>
               ) : (
                 <ul className="space-y-1">
-                  {invites.map((invite) => (
-                    <li
-                      key={invite.id}
-                      className="flex items-center justify-between bg-neutral-800 border border-neutral-700 rounded px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-xs text-neutral-200 truncate">
-                          {invite.invited_email}
-                        </p>
-                        <p className="text-xs text-neutral-500 mt-0.5">
-                          Wygasa: {formatExpiry(invite.expires_at)}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCancelInvite(invite.id)}
-                        disabled={cancellingInviteId === invite.id}
-                        className="ml-2 text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                  {invites.map((invite) => {
+                    /* Requirement 4.5: show inviter display_name; fall back to user_id */
+                    const inviterProfile = getProfile(invite.invited_by);
+                    return (
+                      <li
+                        key={invite.id}
+                        className="flex items-center justify-between bg-neutral-800 border border-neutral-700 rounded px-3 py-2"
                       >
-                        {cancellingInviteId === invite.id ? '…' : 'Anuluj'}
-                      </button>
-                    </li>
-                  ))}
+                        <div className="min-w-0">
+                          <p className="text-xs text-neutral-200 truncate">
+                            {invite.invited_email}
+                          </p>
+                          <p className="text-xs text-neutral-500 mt-0.5">
+                            Zaproszony przez: {inviterProfile.display_name}
+                          </p>
+                          <p className="text-xs text-neutral-500 mt-0.5">
+                            Wygasa: {formatExpiry(invite.expires_at)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelInvite(invite.id)}
+                          disabled={cancellingInviteId === invite.id}
+                          className="ml-2 text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                        >
+                          {cancellingInviteId === invite.id ? '…' : 'Anuluj'}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
