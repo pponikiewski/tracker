@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { AuthModal } from './AuthModal';
+import { ProfileSettingsPanel } from '@/components/Profile/ProfileSettingsPanel';
 import { supabase } from '@/lib/supabase';
 
 export function AuthGate() {
@@ -8,6 +9,7 @@ export function AuthGate() {
   const signOut = useAuthStore((s) => s.signOut);
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Req 1.2: hide entirely when supabase client is null (env vars missing)
   if (!supabase) return null;
@@ -50,6 +52,15 @@ export function AuthGate() {
           <button
             role="menuitem"
             className="w-full text-left px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
+            onClick={() => {
+              setMenuOpen(false);
+              setProfileOpen(true);
+            }}>
+            Profile
+          </button>
+          <button
+            role="menuitem"
+            className="w-full text-left px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
             onClick={async () => {
               setMenuOpen(false);
               await signOut();
@@ -58,6 +69,7 @@ export function AuthGate() {
           </button>
         </div>
       )}
+      {profileOpen && <ProfileSettingsPanel onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }
