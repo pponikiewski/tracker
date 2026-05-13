@@ -4,16 +4,37 @@ import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { ProjectsView } from "./components/ProjectsView";
 import { InviteAcceptView, getInviteTokenFromUrl } from "@/components/Workspace/InviteAcceptView";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
+import { useWorkspaceStore } from "@/store/workspace";
 
 const DashboardView = lazy(() =>
   import("./components/Dashboard/DashboardView").then((m) => ({ default: m.DashboardView })),
 );
 
-type Tab = "projects" | "dashboard";
+const TeamView = lazy(() =>
+  import("./components/Team/TeamView").then((m) => ({ default: m.TeamView })),
+);
+
+type Tab = "projects" | "dashboard" | "team";
 
 function App() {
   const [tab, setTab] = useState<Tab>("projects");
   const inviteToken = getInviteTokenFromUrl();
+
+  // Determine whether the Team tab should be visible (Requirement 6.1, 9.5):
+  // show only when the active workspace has more than 1 member.
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const memberships = useWorkspaceStore((s) => s.memberships);
+  const activeMemberCount = memberships.filter(
+    (m) => m.workspace_id === activeWorkspaceId,
+  ).length;
+  const showTeamTab = activeMemberCount > 1;
+
+  // If the Team tab becomes hidden while it is active, fall back to Projects.
+  useEffect(() => {
+    if (tab === "team" && !showTeamTab) {
+      setTab("projects");
+    }
+  }, [tab, showTeamTab]);
 
   // Global keyboard shortcuts.
   useEffect(() => {
@@ -26,11 +47,14 @@ function App() {
       } else if (e.key === "2") {
         e.preventDefault();
         setTab("dashboard");
+      } else if (e.key === "3" && showTeamTab) {
+        e.preventDefault();
+        setTab("team");
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  }, [showTeamTab]);
 
   return (
     <div className="flex h-full flex-col bg-neutral-950">
@@ -45,6 +69,11 @@ function App() {
         <TabButton active={tab === "dashboard"} onClick={() => setTab("dashboard")} hint="Ctrl+2">
           Dashboard
         </TabButton>
+        {showTeamTab && (
+          <TabButton active={tab === "team"} onClick={() => setTab("team")} hint="Ctrl+3">
+            Team
+          </TabButton>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <WorkspaceSwitcher />
           <SyncStatusBadge />
@@ -54,6 +83,16 @@ function App() {
       <div className="flex-1 overflow-hidden">
         {tab === "projects" ? (
           <ProjectsView />
+        ) : tab === "team" ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+                Ładowanie widoku zespołu…
+              </div>
+            }
+          >
+            <TeamView />
+          </Suspense>
         ) : (
           <Suspense
             fallback={
