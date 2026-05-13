@@ -91,7 +91,31 @@ export interface Invite {
   accepted_at: string | null;
 }
 
-export type OutboxEntity = 'resource' | 'event' | 'workspace' | 'workspace_membership';
+export interface Assignment {
+  id: string;
+  resource_id: string;
+  user_id: string;
+  workspace_id: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+export interface CachedProfile {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  cached_at: number;
+}
+
+export type Entity =
+  | 'resource'
+  | 'event'
+  | 'workspace'
+  | 'workspace_membership'
+  | 'assignment';
+
+export type OutboxEntity = Entity;
 export type OutboxOp = 'upsert' | 'delete';
 
 export interface OutboxRow {
