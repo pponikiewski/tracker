@@ -209,7 +209,7 @@ export function ProjectsView() {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, activeWorkspaceId]);
 
   // Block native context menu globally on this view.
   useEffect(() => {

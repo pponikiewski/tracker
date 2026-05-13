@@ -92,6 +92,12 @@ export async function fetchAndCacheProfiles(userIds: string[]): Promise<CachedPr
     .in('user_id', userIds);
 
   if (error) {
+    // Degrade gracefully when the `profiles` table does not exist yet in Supabase
+    // (404 / PGRST205). Callers will fall back to email-prefix display names.
+    if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('Could not find the table')) {
+      console.warn('[profiles] table not found in Supabase — skipping remote fetch. Create the `profiles` table to enable shared display names and avatars.');
+      return [];
+    }
     throw new Error(`Failed to fetch profiles: ${error.message}`);
   }
 
@@ -182,6 +188,20 @@ export async function ensureProfile(userId: string, email: string): Promise<void
     .maybeSingle();
 
   if (fetchError) {
+    // Degrade gracefully when the `profiles` table does not exist yet in Supabase.
+    if (fetchError.code === 'PGRST205' || fetchError.code === '42P01' || fetchError.message?.includes('Could not find the table')) {
+      console.warn('[profiles] table not found in Supabase — ensureProfile is a no-op. Create the `profiles` table to enable shared display names and avatars.');
+      // Seed the local cache with an email-prefix display name so the UI has something to show.
+      const emailPrefix = email.split('@')[0] ?? email;
+      const db = await getDb();
+      await db.execute(
+        `INSERT INTO profiles_cache (user_id, display_name, avatar_url, cached_at)
+         VALUES ($1, $2, NULL, $3)
+         ON CONFLICT(user_id) DO NOTHING`,
+        [userId, emailPrefix, Date.now()],
+      );
+      return;
+    }
     throw new Error(`Failed to check existing profile: ${fetchError.message}`);
   }
 
