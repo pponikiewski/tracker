@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { ResourceNode } from "@/lib/db/types";
 import { formatMinutes } from "@/lib/utils/time";
+import { AvatarBadge } from "@/components/Profile/AvatarBadge";
+import { useAssignmentStore } from "@/store/assignments";
+import { useProfileStore } from "@/store/profile";
 
 interface TreeCallbacks {
   onToggle: (id: string) => void;
@@ -36,6 +39,8 @@ const TYPE_LABEL: Record<string, string> = {
   task: "ZAD",
 };
 
+const MAX_VISIBLE_ASSIGNEES = 3;
+
 export function TreeNode(props: Props) {
   const { node, depth, expandedIds, selectedId, renamingId, draggingId, dropTargetId } = props;
   const expanded = expandedIds.has(node.id);
@@ -44,6 +49,13 @@ export function TreeNode(props: Props) {
   const isDropTarget = dropTargetId === node.id;
   const isDragging = draggingId === node.id;
   const hasChildren = node.children.length > 0;
+
+  const getAssignees = useAssignmentStore((s) => s.getAssignees);
+  const getProfile = useProfileStore((s) => s.getProfile);
+
+  const assigneeIds = getAssignees(node.id);
+  const visibleAssignees = assigneeIds.slice(0, MAX_VISIBLE_ASSIGNEES);
+  const overflowCount = assigneeIds.length - visibleAssignees.length;
 
   return (
     <>
@@ -113,6 +125,28 @@ export function TreeNode(props: Props) {
         {!renaming && node.cached_minutes > 0 && (
           <span className="ml-2 shrink-0 text-xs tabular-nums text-neutral-400">
             {formatMinutes(node.cached_minutes)}
+          </span>
+        )}
+
+        {!renaming && assigneeIds.length > 0 && (
+          <span className="ml-2 flex shrink-0 items-center gap-0.5">
+            {visibleAssignees.map((userId) => {
+              const profile = getProfile(userId);
+              return (
+                <AvatarBadge
+                  key={userId}
+                  userId={userId}
+                  displayName={profile.display_name}
+                  avatarUrl={profile.avatar_url}
+                  size="xs"
+                />
+              );
+            })}
+            {overflowCount > 0 && (
+              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neutral-700 px-1 text-[9px] font-medium text-neutral-300">
+                +{overflowCount}
+              </span>
+            )}
           </span>
         )}
 
