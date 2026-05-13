@@ -183,7 +183,9 @@ async function flushEntity(
     const mapped =
       entity === 'workspace'
         ? mapWorkspaceToCloud(data)
-        : mapToCloud(data, userId);
+        : entity === 'assignment'
+          ? mapAssignmentToCloud(data)
+          : mapToCloud(data, userId);
     toPush.push({ row, mapped });
   }
 
@@ -195,6 +197,7 @@ async function flushEntity(
   const table =
     entity === 'resource' ? 'resources' :
     entity === 'event' ? 'events' :
+    entity === 'assignment' ? 'assignments' :
     'workspaces';
 
   const { error } = await supabase
@@ -236,6 +239,7 @@ export async function tick(): Promise<void> {
   const evtOutcome = await flushEntity('event', perEntity.event, supersededIds.event, userId);
   const wsOutcome = await flushEntity('workspace', perEntity.workspace, supersededIds.workspace, userId);
   const wsmOutcome = await flushEntity('workspace_membership', perEntity.workspace_membership, supersededIds.workspace_membership, userId);
+  const asnOutcome = await flushEntity('assignment', perEntity.assignment, supersededIds.assignment, userId);
 
   // Delete successfully flushed rows
   await deleteByIds(db, [
@@ -243,6 +247,7 @@ export async function tick(): Promise<void> {
     ...evtOutcome.deletableIds,
     ...wsOutcome.deletableIds,
     ...wsmOutcome.deletableIds,
+    ...asnOutcome.deletableIds,
   ]);
 
   // Bump retry only on failed latest rows (invalid rows already had bumpRetry called per-row)
@@ -258,16 +263,21 @@ export async function tick(): Promise<void> {
   if (wsmOutcome.failedIds.length > 0) {
     await bumpRetry(db, wsmOutcome.failedIds, wsmOutcome.errorMessage ?? 'unknown', Date.now());
   }
+  if (asnOutcome.failedIds.length > 0) {
+    await bumpRetry(db, asnOutcome.failedIds, asnOutcome.errorMessage ?? 'unknown', Date.now());
+  }
 
   const anyFailed =
     resOutcome.failedIds.length + evtOutcome.failedIds.length +
     wsOutcome.failedIds.length + wsmOutcome.failedIds.length +
+    asnOutcome.failedIds.length +
     resOutcome.invalidIds.length + evtOutcome.invalidIds.length +
-    wsOutcome.invalidIds.length + wsmOutcome.invalidIds.length > 0;
+    wsOutcome.invalidIds.length + wsmOutcome.invalidIds.length +
+    asnOutcome.invalidIds.length > 0;
 
   if (anyFailed) {
     const msg =
-      [resOutcome.errorMessage, evtOutcome.errorMessage, wsOutcome.errorMessage, wsmOutcome.errorMessage]
+      [resOutcome.errorMessage, evtOutcome.errorMessage, wsOutcome.errorMessage, wsmOutcome.errorMessage, asnOutcome.errorMessage]
         .filter(Boolean).join('; ') || 'sync error';
     auth.setSyncStatus({ kind: 'error', message: msg });
   } else {
