@@ -2,6 +2,7 @@ import { getDb } from '@/lib/db/connection';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
 import { listReady, deleteByIds, bumpRetry, countPending } from './outbox';
+import { pathToLtree } from '@/lib/utils/ltree';
 import type { Entity } from './types';
 
 interface ReadyRow {
@@ -64,6 +65,25 @@ export function mapToCloud(data: Record<string, unknown>, userId: string): Recor
   };
 }
 
+/**
+ * Maps a local Resource payload to cloud format.
+ *
+ * Supabase stores `resources.path` as ltree, whose labels may only contain
+ * [A-Za-z0-9_] and must be separated by dots. Our local path format uses
+ * hyphen-containing UUIDs separated by slashes, so we convert before push.
+ */
+export function mapResourceToCloud(
+  data: Record<string, unknown>,
+  userId: string,
+): Record<string, unknown> {
+  const base = mapToCloud(data, userId);
+  const rawPath = data.path;
+  if (typeof rawPath === 'string' && rawPath.length > 0) {
+    base.path = pathToLtree(rawPath);
+  }
+  return base;
+}
+
 // Exported for property tests (Property 10)
 // Workspace has owner_id, NOT user_id — do not inject user_id
 export function mapWorkspaceToCloud(data: Record<string, unknown>): Record<string, unknown> {
@@ -103,6 +123,25 @@ function validateMembershipTimestamps(data: Record<string, unknown>): string | n
   return null;
 }
 
+/**
+ * Returns true for Supabase errors that will never succeed on retry —
+ * specifically RLS violations and missing-table errors. These rows must be
+ * dropped from the outbox to stop the sync error list from growing forever.
+ */
+function isPermanentRejection(error: { code?: string; message?: string }): boolean {
+  const code = error.code;
+  const msg = error.message?.toLowerCase() ?? '';
+  // Missing table / relation
+  if (code === 'PGRST205' || code === '42P01') return true;
+  if (msg.includes('could not find the table')) return true;
+  if (msg.includes('relation') && msg.includes('does not exist')) return true;
+  // RLS denial
+  if (code === '42501') return true;
+  if (msg.includes('row-level security') || msg.includes('row level security')) return true;
+  if (msg.includes('violates row-level security policy')) return true;
+  return false;
+}
+
 interface FlushOutcome {
   deletableIds: number[];
   failedIds: number[];
@@ -136,9 +175,16 @@ async function flushEntity(
           .delete()
           .match({ workspace_id: data.workspace_id, user_id: data.user_id });
         if (error) {
-          await bumpRetry(db, [row.id], error.message, Date.now());
-          outcome.failedIds.push(row.id);
-          outcome.errorMessage = error.message;
+          if (isPermanentRejection(error)) {
+            console.warn(
+              `[sync] dropping membership delete for ${data.workspace_id}:${data.user_id} — permanently rejected (${error.message})`,
+            );
+            outcome.deletableIds.push(row.id);
+          } else {
+            await bumpRetry(db, [row.id], error.message, Date.now());
+            outcome.failedIds.push(row.id);
+            outcome.errorMessage = error.message;
+          }
         } else {
           outcome.deletableIds.push(row.id);
         }
@@ -158,9 +204,16 @@ async function flushEntity(
           .from('workspace_memberships')
           .upsert(mapped, { onConflict: 'workspace_id,user_id' });
         if (error) {
-          await bumpRetry(db, [row.id], error.message, Date.now());
-          outcome.failedIds.push(row.id);
-          outcome.errorMessage = error.message;
+          if (isPermanentRejection(error)) {
+            console.warn(
+              `[sync] dropping membership upsert for ${data.workspace_id}:${data.user_id} — permanently rejected (${error.message})`,
+            );
+            outcome.deletableIds.push(row.id);
+          } else {
+            await bumpRetry(db, [row.id], error.message, Date.now());
+            outcome.failedIds.push(row.id);
+            outcome.errorMessage = error.message;
+          }
         } else {
           outcome.deletableIds.push(row.id);
         }
@@ -188,7 +241,9 @@ async function flushEntity(
         ? mapWorkspaceToCloud(data)
         : entity === 'assignment'
           ? mapAssignmentToCloud(data)
-          : mapToCloud(data, userId);
+          : entity === 'resource'
+            ? mapResourceToCloud(data, userId)
+            : mapToCloud(data, userId);
     toPush.push({ row, mapped });
   }
 
@@ -208,20 +263,9 @@ async function flushEntity(
     .upsert(toPush.map((x) => x.mapped), { onConflict: 'id' });
 
   if (error) {
-    // Gracefully drop rows targeting a table that does not exist in Supabase
-    // (e.g. assignments before the Phase 6 migration has been applied).
-    // Without this guard every tick would re-push and re-fail with 404.
-    const code = (error as { code?: string }).code;
-    const msg = error.message?.toLowerCase() ?? '';
-    const missingTable =
-      code === 'PGRST205' ||
-      code === '42P01' ||
-      msg.includes('could not find the table') ||
-      msg.includes('relation') && msg.includes('does not exist');
-    if (missingTable) {
+    if (isPermanentRejection(error)) {
       console.warn(
-        `[sync] target table "${table}" is missing in Supabase — dropping ${toPush.length} queued row(s). ` +
-          `Apply the relevant migration to enable sync for this entity.`,
+        `[sync] dropping ${toPush.length} ${table} row(s) — permanently rejected (${error.message})`,
       );
       outcome.deletableIds = [...toPush.map((x) => x.row.id), ...supersededIds];
       return outcome;
@@ -260,14 +304,14 @@ async function tickInternal(): Promise<void> {
   }
   const db = await getDb();
   const now = Date.now();
-  const rows = (await listReady(db, now, 50)) as ReadyRow[];
+  const userId = auth.state.user.id;
+  const rows = (await listReady(db, now, 50, userId)) as ReadyRow[];
   if (rows.length === 0) {
     auth.setPendingCount(await countPending(db));
     return;
   }
   auth.setSyncStatus({ kind: 'syncing' });
   const { perEntity, supersededIds } = collapseDuplicates(rows);
-  const userId = auth.state.user.id;
 
   // Req 6.7: flush each entity independently
   const resOutcome = await flushEntity('resource', perEntity.resource, supersededIds.resource, userId);

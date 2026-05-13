@@ -10,6 +10,16 @@ import { tick } from './worker';
 
 const pulledForUser = new Set<string>();
 
+/**
+ * Forgets that initial pull has run for any user. Call this after wiping the
+ * local SQLite cache (e.g. on user switch) so the next authenticated user
+ * triggers a fresh pull instead of being short-circuited by the in-memory
+ * "already pulled" guard.
+ */
+export function resetInitialPullState(): void {
+  pulledForUser.clear();
+}
+
 const toMs = (v: unknown): number =>
   typeof v === 'string' ? Date.parse(v) : (v as number);
 

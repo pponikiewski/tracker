@@ -219,3 +219,99 @@ export async function getOrCreateLocalWorkspace(): Promise<string> {
   );
   return persisted[0]?.value ?? id;
 }
+
+/**
+ * Lists every Local_Personal_Workspace (owner_id = 'local') currently stored
+ * locally. Returns only non-deleted entries.
+ */
+export async function listLocalWorkspaces(): Promise<Workspace[]> {
+  const db = await getDb();
+  return db.select<Workspace[]>(
+    "SELECT * FROM workspaces WHERE owner_id = 'local' AND deleted_at IS NULL",
+  );
+}
+
+/**
+ * Promotes a Local_Personal_Workspace to a cloud workspace owned by the given
+ * authenticated user, preserving all existing resources and events.
+ *
+ * Steps performed in-place on SQLite:
+ *   1. workspaces.owner_id: 'local' → userId
+ *   2. workspace_memberships.user_id: 'local' → userId
+ *   3. resources/events keep their workspace_id (unchanged)
+ *   4. Enqueue workspace + membership + every resource + every event for push.
+ *
+ * After this runs, the workspace becomes a regular cloud workspace:
+ * the user can rename it, generate join codes, invite members, etc.
+ */
+export async function claimLocalWorkspace(
+  workspaceId: string,
+  userId: string,
+): Promise<void> {
+  await withTx(async (db) => {
+    const ts = now();
+
+    // 1. workspace row: flip owner_id and bump updated_at
+    await db.execute(
+      `UPDATE workspaces
+         SET owner_id = $1, updated_at = $2
+       WHERE id = $3 AND owner_id = 'local'`,
+      [userId, ts, workspaceId],
+    );
+
+    // 2. membership row: replace 'local' with real userId
+    // We cannot UPDATE the PK column in-place cleanly; delete + insert instead.
+    await db.execute(
+      `DELETE FROM workspace_memberships
+         WHERE workspace_id = $1 AND user_id = 'local'`,
+      [workspaceId],
+    );
+    await db.execute(
+      `INSERT OR IGNORE INTO workspace_memberships (workspace_id, user_id, role, joined_at)
+       VALUES ($1, $2, 'owner', $3)`,
+      [workspaceId, userId, ts],
+    );
+
+    // 3. Enqueue the workspace for push.
+    const ws = await db.select<Workspace[]>(
+      "SELECT * FROM workspaces WHERE id = $1",
+      [workspaceId],
+    );
+    if (ws[0]) {
+      await enqueue(db, "workspace", workspaceId, "upsert", ws[0] as unknown as Record<string, unknown>);
+    }
+
+    // 4. Enqueue the new owner membership.
+    const membership: WorkspaceMembership = {
+      workspace_id: workspaceId,
+      user_id: userId,
+      role: "owner",
+      joined_at: ts,
+    };
+    await enqueue(
+      db,
+      "workspace_membership",
+      `${workspaceId}:${userId}`,
+      "upsert",
+      membership as unknown as Record<string, unknown>,
+    );
+
+    // 5. Enqueue every resource and every event belonging to this workspace
+    //    so they land in the cloud copy.
+    const resources = await db.select<Array<Record<string, unknown>>>(
+      "SELECT * FROM resources WHERE workspace_id = $1",
+      [workspaceId],
+    );
+    for (const r of resources) {
+      await enqueue(db, "resource", r.id as string, "upsert", r);
+    }
+
+    const events = await db.select<Array<Record<string, unknown>>>(
+      "SELECT * FROM events WHERE workspace_id = $1",
+      [workspaceId],
+    );
+    for (const e of events) {
+      await enqueue(db, "event", e.id as string, "upsert", e);
+    }
+  });
+}

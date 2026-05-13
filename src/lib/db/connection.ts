@@ -221,13 +221,54 @@ export async function getDb(): Promise<Database> {
   await db.execute(SCHEMA_SQL);
   await runPhase5Migration(db);
   await runPhase6Migration(db);
+  await ensureOutboxUserIdColumn(db);
   await purgeLocalOutboxRows(db);
   cached = db;
   return db;
+}
+
+/**
+ * Idempotent: adds a `user_id` column to sync_outbox so each queued operation
+ * remembers which authenticated user enqueued it. Worker.tick() then pushes
+ * only the rows belonging to the currently-signed-in user, so pendings
+ * created by user A never get rejected (or worse, dropped) while user B is
+ * signed in on the same machine.
+ */
+async function ensureOutboxUserIdColumn(db: Database): Promise<void> {
+  type PragmaRow = { name: string };
+  const cols = await db.select<PragmaRow[]>("PRAGMA table_info('sync_outbox')");
+  if (cols.some((c) => c.name === 'user_id')) return;
+  await db.execute('ALTER TABLE sync_outbox ADD COLUMN user_id TEXT');
 }
 
 export async function closeDb(): Promise<void> {
   if (!cached) return;
   await cached.close();
   cached = null;
+}
+
+/**
+ * Wipes all user-scoped data from local SQLite.
+ *
+ * Preserves:
+ *   • Local_Personal_Workspace row and its membership (owner_id / user_id = 'local')
+ *   • kv_store entries (e.g. local_workspace_id)
+ *   • sync_outbox — each row is tagged with its user_id, so pending pushes
+ *     from another user are kept around for when they sign back in.
+ *
+ * Called when the authenticated user changes so we don't leak another user's
+ * projects / events / memberships across accounts on the same machine.
+ */
+export async function resetUserScopedData(): Promise<void> {
+  const db = await getDb();
+
+  await db.execute(`DELETE FROM profiles_cache`);
+  await db.execute(`DELETE FROM assignments`);
+  await db.execute(`DELETE FROM events`);
+  await db.execute(`DELETE FROM resources`);
+  // Drop memberships for every user except the local pseudo-user.
+  await db.execute(`DELETE FROM workspace_memberships WHERE user_id != 'local'`);
+  // Drop workspaces that are not Local_Personal_Workspace.
+  await db.execute(`DELETE FROM workspaces WHERE owner_id != 'local'`);
+  console.info('[db] resetUserScopedData: cleared non-local data for user switch');
 }

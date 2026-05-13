@@ -104,7 +104,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
           const workspaces = await workspaceQueries.listWorkspaces();
           set({ workspaces, memberships: [], activeWorkspaceId: localId, loading: false });
         } else {
-          // Authenticated mode: load from SQLite then restore active
+          // Authenticated mode.
+          // First, adopt any Local_Personal_Workspace that still sits in SQLite
+          // with owner_id = 'local'. After this the workspace becomes a
+          // regular cloud workspace owned by the current user, preserving all
+          // its projects and time events.
+          const locals = await workspaceQueries.listLocalWorkspaces();
+          for (const ws of locals) {
+            try {
+              await workspaceQueries.claimLocalWorkspace(ws.id, userId);
+            } catch (err) {
+              console.warn('[workspace] claimLocalWorkspace failed for', ws.id, err);
+            }
+          }
+
           const workspaces = await workspaceQueries.listWorkspaces();
           const memberships = await workspaceQueries.getUserMemberships(userId);
           set({ workspaces, memberships, loading: false });
