@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store/auth';
 import { lwwMerge } from './merge';
 import { enqueue } from './outbox';
 import { recalcCachedMinutesForResource } from '@/lib/db/queries';
-import type { Resource, TimeEvent, Workspace, WorkspaceMembership } from '@/lib/db/types';
+import type { Assignment, Resource, TimeEvent, Workspace, WorkspaceMembership } from '@/lib/db/types';
 import { ltreeToPath } from '@/lib/utils/ltree';
 import { tick } from './worker';
 
@@ -72,6 +72,19 @@ function cloudToLocalMembership(c: Record<string, unknown>): WorkspaceMembership
     user_id: c.user_id as string,
     role: c.role as WorkspaceMembership['role'],
     joined_at: toMs(c.joined_at),
+  };
+}
+
+// Req 8.4: convert cloud assignment row (ISO timestamps) to local Assignment (Unix ms)
+function cloudToLocalAssignment(c: Record<string, unknown>): Assignment {
+  return {
+    id: c.id as string,
+    resource_id: c.resource_id as string,
+    user_id: c.user_id as string,
+    workspace_id: c.workspace_id as string,
+    created_at: toMs(c.created_at),
+    updated_at: toMs(c.updated_at),
+    deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
   };
 }
 
@@ -280,21 +293,27 @@ export async function runInitialPull(userId: string): Promise<void> {
     return;
   }
 
-  // Step 6: Fetch resources + events (existing logic)
-  const [{ data: cloudR, error: errR }, { data: cloudE, error: errE }] = await Promise.all([
+  // Step 6: Fetch resources + events + assignments (Req 8.4)
+  const [
+    { data: cloudR, error: errR },
+    { data: cloudE, error: errE },
+    { data: cloudA, error: errA },
+  ] = await Promise.all([
     supabase.from('resources').select('*'),
     supabase.from('events').select('*'),
+    supabase.from('assignments').select('*'),
   ]);
 
-  if (errR || errE) {
+  if (errR || errE || errA) {
     // Req 8.9: leave local data unchanged, set error, do NOT mark as pulled (allow retry)
-    auth.setSyncStatus({ kind: 'error', message: (errR ?? errE)!.message });
+    auth.setSyncStatus({ kind: 'error', message: (errR ?? errE ?? errA)!.message });
     return;
   }
 
-  // Step 7: LWW merge resources/events → write to SQLite, rebuild paths, recalc, reload
+  // Step 7: LWW merge resources/events/assignments → write to SQLite, rebuild paths, recalc, reload
   const localR = await db.select<Resource[]>(`SELECT * FROM resources`);
   const localE = await db.select<TimeEvent[]>(`SELECT * FROM events`);
+  const localA = await db.select<Assignment[]>(`SELECT * FROM assignments`);
 
   const cloudRloc = (cloudR ?? []).map((c) =>
     cloudToLocalResource(c as Record<string, unknown>),
@@ -302,9 +321,13 @@ export async function runInitialPull(userId: string): Promise<void> {
   const cloudEloc = (cloudE ?? []).map((c) =>
     cloudToLocalEvent(c as Record<string, unknown>),
   );
+  const cloudAloc = (cloudA ?? []).map((c) =>
+    cloudToLocalAssignment(c as Record<string, unknown>),
+  );
 
   const rMerge = lwwMerge(localR, cloudRloc);
   const eMerge = lwwMerge(localE, cloudEloc);
+  const aMerge = lwwMerge(localA, cloudAloc);
 
   try {
     for (const r of rMerge.writeSqlite) {
@@ -342,6 +365,24 @@ export async function runInitialPull(userId: string): Promise<void> {
     }
     for (const e of eMerge.pushOutbox) {
       await enqueue(db, 'event', e.id, 'upsert', e as unknown as Record<string, unknown>);
+    }
+
+    // Req 8.4: write cloud-wins assignments to SQLite
+    for (const a of aMerge.writeSqlite) {
+      await db.execute(
+        `INSERT INTO assignments (id, resource_id, user_id, workspace_id, created_at, updated_at, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT(id) DO UPDATE SET
+           resource_id=excluded.resource_id, user_id=excluded.user_id,
+           workspace_id=excluded.workspace_id,
+           created_at=excluded.created_at, updated_at=excluded.updated_at,
+           deleted_at=excluded.deleted_at`,
+        [a.id, a.resource_id, a.user_id, a.workspace_id, a.created_at, a.updated_at, a.deleted_at],
+      );
+    }
+    // Req 9.4: enqueue local-wins assignments for push to cloud
+    for (const a of aMerge.pushOutbox) {
+      await enqueue(db, 'assignment', a.id, 'upsert', a as unknown as Record<string, unknown>);
     }
 
     // Req 8.7: rebuild materialized paths from parent_id chains
