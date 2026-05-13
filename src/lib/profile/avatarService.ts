@@ -104,21 +104,36 @@ export async function uploadAvatar(userId: string, file: File): Promise<string> 
   const { data: urlData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(storagePath);
   const newUrl = urlData.publicUrl;
 
-  // Fetch the old avatar_url so we can delete the old file
+  // Fetch the existing profile (display_name + avatar_url) so we can delete
+  // the old file AND preserve display_name (NOT NULL in Supabase).
   const { data: profileData } = await supabase
     .from('profiles')
-    .select('avatar_url')
+    .select('display_name, avatar_url')
     .eq('user_id', userId)
     .maybeSingle();
 
   const oldAvatarUrl: string | null = profileData?.avatar_url ?? null;
+
+  // Determine display_name for upsert — Supabase requires NOT NULL.
+  // Prefer existing value; fall back to email prefix from the current session.
+  let displayName = profileData?.display_name ?? null;
+  if (!displayName) {
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email ?? '';
+    displayName = email.split('@')[0] || userId;
+  }
 
   // Update profiles.avatar_url in Supabase
   const now = new Date().toISOString();
   const { error: updateError } = await supabase
     .from('profiles')
     .upsert(
-      { user_id: userId, avatar_url: newUrl, updated_at: now },
+      {
+        user_id: userId,
+        display_name: displayName,
+        avatar_url: newUrl,
+        updated_at: now,
+      },
       { onConflict: 'user_id' },
     );
 
