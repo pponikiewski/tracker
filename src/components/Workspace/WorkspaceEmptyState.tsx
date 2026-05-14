@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { WorkspaceCreateModal } from './WorkspaceCreateModal';
 import { JoinWorkspaceModal } from './JoinWorkspaceModal';
 import { AuthGate } from '@/components/Auth/AuthGate';
-import { SyncStatusBadge } from '@/components/Auth/SyncStatusBadge';
 
 export function WorkspaceEmptyState() {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -14,7 +13,6 @@ export function WorkspaceEmptyState() {
         <span className="mr-auto text-xs font-semibold tracking-tight text-neutral-100">
           tracker
         </span>
-        <SyncStatusBadge />
         <AuthGate />
       </nav>
 

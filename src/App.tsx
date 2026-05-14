@@ -20,6 +20,7 @@ type Tab = "projects" | "dashboard" | "team";
 
 function App() {
   const [tab, setTab] = useState<Tab>("projects");
+  const [hasResolvedInitialWorkspaceState, setHasResolvedInitialWorkspaceState] = useState(false);
   const authState = useAuthStore((s) => s.state);
 
   // All hooks must be called unconditionally before any early returns.
@@ -31,6 +32,17 @@ function App() {
     (m) => m.workspace_id === activeWorkspaceId,
   ).length;
   const showTeamTab = activeMemberCount > 1;
+
+  useEffect(() => {
+    if (authState.kind !== "authed") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the empty-workspace gate when auth leaves the app shell
+      setHasResolvedInitialWorkspaceState(false);
+      return;
+    }
+    if (!workspaceLoading) {
+      setHasResolvedInitialWorkspaceState(true);
+    }
+  }, [authState.kind, workspaceLoading]);
 
   // If the Team tab becomes hidden while it is active, fall back to Projects.
   useEffect(() => {
@@ -75,7 +87,11 @@ function App() {
   }
 
   const visibleWorkspaces = workspaces.filter((w) => w.deleted_at === null);
-  if (!workspaceLoading && visibleWorkspaces.length === 0 && activeWorkspaceId === null) {
+  if (
+    hasResolvedInitialWorkspaceState &&
+    visibleWorkspaces.length === 0 &&
+    activeWorkspaceId === null
+  ) {
     return <WorkspaceEmptyState />;
   }
 
