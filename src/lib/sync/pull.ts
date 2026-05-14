@@ -42,6 +42,7 @@ function cloudToLocalResource(c: Record<string, unknown>): Resource {
     color: (c.color as string | null) ?? null,
     path,
     cached_minutes: (c.cached_minutes as number) ?? 0,
+    sort_order: (c.sort_order as number | null) ?? toMs(c.created_at),
     created_at: toMs(c.created_at),
     updated_at: toMs(c.updated_at),
     deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
@@ -420,17 +421,18 @@ function isMissingTable(err: SbError): boolean {
       const localResource = await normalizeResourceForLocalWrite(r);
       try {
         await db.execute(
-          `INSERT INTO resources (id, workspace_id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at, deleted_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          `INSERT INTO resources (id, workspace_id, parent_id, name, type, color, path, cached_minutes, sort_order, created_at, updated_at, deleted_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
            ON CONFLICT(id) DO UPDATE SET
              workspace_id=excluded.workspace_id,
              parent_id=excluded.parent_id, name=excluded.name, type=excluded.type,
              color=excluded.color, path=excluded.path, cached_minutes=excluded.cached_minutes,
-              created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
+              sort_order=excluded.sort_order, created_at=excluded.created_at,
+              updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
           [
             localResource.id, localResource.workspace_id, localResource.parent_id,
             localResource.name, localResource.type, localResource.color,
-            localResource.path, localResource.cached_minutes,
+            localResource.path, localResource.cached_minutes, localResource.sort_order,
             localResource.created_at, localResource.updated_at, localResource.deleted_at,
           ],
         );

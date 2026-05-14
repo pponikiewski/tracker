@@ -51,6 +51,9 @@ export function AssignmentPicker({
   // Per-row busy state to prevent double-clicks
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(
+    anchorX !== undefined && anchorY !== undefined ? { x: anchorX, y: anchorY } : null,
+  );
 
   // ---- Fetch profiles for all members on mount ----
   useEffect(() => {
@@ -106,8 +109,20 @@ export function AssignmentPicker({
 
   // ---- Positioning ----
   const isPositioned = anchorX !== undefined && anchorY !== undefined;
+  useEffect(() => {
+    const picker = ref.current;
+    if (!picker || !isPositioned) return;
+
+    const margin = 8;
+    const rect = picker.getBoundingClientRect();
+    setPosition({
+      x: Math.max(margin, Math.min(anchorX, window.innerWidth - rect.width - margin)),
+      y: Math.max(margin, Math.min(anchorY, window.innerHeight - rect.height - margin)),
+    });
+  }, [anchorX, anchorY, isPositioned, workspaceMembers.length]);
+
   const positionStyle: React.CSSProperties = isPositioned
-    ? { position: 'fixed', left: anchorX, top: anchorY, zIndex: 50 }
+    ? { position: 'fixed', left: position?.x ?? anchorX, top: position?.y ?? anchorY, zIndex: 50 }
     : {};
 
   return (

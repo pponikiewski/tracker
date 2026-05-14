@@ -10,6 +10,7 @@ export interface Resource {
   color: string | null;
   path: string;
   cached_minutes: number;
+  sort_order: number;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;

@@ -10,7 +10,9 @@ const now = () => Date.now();
 export async function listActiveResources(workspaceId: string): Promise<Resource[]> {
   const db = await getDb();
   return db.select<Resource[]>(
-    "SELECT * FROM resources WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY path",
+    `SELECT * FROM resources
+     WHERE workspace_id = $1 AND deleted_at IS NULL
+     ORDER BY path, sort_order ASC, created_at ASC`,
     [workspaceId],
   );
 }
@@ -33,6 +35,10 @@ export async function createResource(input: CreateResourceInput): Promise<string
   return withTx(async (db) => {
     const id = newId();
     const ts = now();
+    const sortOrder = await getNewResourceSortOrder(
+      input.workspaceId,
+      input.parentId,
+    );
 
     let path: string;
     if (input.parentId === null) {
@@ -45,8 +51,8 @@ export async function createResource(input: CreateResourceInput): Promise<string
 
     await db.execute(
       `INSERT INTO resources
-         (id, parent_id, name, type, color, path, cached_minutes, workspace_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $8)`,
+         (id, parent_id, name, type, color, path, cached_minutes, sort_order, workspace_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $9)`,
       [
         id,
         input.parentId,
@@ -54,6 +60,7 @@ export async function createResource(input: CreateResourceInput): Promise<string
         input.type,
         input.color ?? null,
         path,
+        sortOrder,
         input.workspaceId,
         ts,
       ],
@@ -65,6 +72,29 @@ export async function createResource(input: CreateResourceInput): Promise<string
 
     return id;
   });
+}
+
+async function getNewResourceSortOrder(
+  workspaceId: string,
+  parentId: string | null,
+): Promise<number> {
+  const db = await getDb();
+  const rows =
+    parentId === null
+      ? await db.select<{ min_order: number | null }[]>(
+          `SELECT MIN(sort_order) AS min_order
+           FROM resources
+           WHERE workspace_id = $1 AND parent_id IS NULL AND deleted_at IS NULL`,
+          [workspaceId],
+        )
+      : await db.select<{ min_order: number | null }[]>(
+          `SELECT MIN(sort_order) AS min_order
+           FROM resources
+           WHERE workspace_id = $1 AND parent_id = $2 AND deleted_at IS NULL`,
+          [workspaceId, parentId],
+        );
+
+  return (rows[0]?.min_order ?? 0) - 1000;
 }
 
 export async function renameResource(id: string, name: string): Promise<void> {
@@ -90,6 +120,59 @@ export async function setResourceColor(id: string, color: string | null): Promis
     const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
     if (rows[0])
       await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+  });
+}
+
+export async function reorderResourceBefore(id: string, targetId: string): Promise<void> {
+  if (id === targetId) return;
+
+  await withTx(async (db) => {
+    const source = await getResource(id);
+    const target = await getResource(targetId);
+    if (!source || !target) return;
+    if (source.workspace_id !== target.workspace_id) return;
+    if (source.parent_id !== target.parent_id) return;
+
+    const siblings =
+      target.parent_id === null
+        ? await db.select<Resource[]>(
+            `SELECT * FROM resources
+             WHERE workspace_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
+             ORDER BY sort_order ASC, created_at ASC, name ASC`,
+            [target.workspace_id],
+          )
+        : await db.select<Resource[]>(
+            `SELECT * FROM resources
+             WHERE workspace_id = $1 AND parent_id = $2 AND deleted_at IS NULL
+             ORDER BY sort_order ASC, created_at ASC, name ASC`,
+            [target.workspace_id, target.parent_id],
+          );
+
+    const orderedIds = siblings.map((s) => s.id).filter((siblingId) => siblingId !== id);
+    const targetIndex = orderedIds.indexOf(targetId);
+    if (targetIndex === -1) return;
+    orderedIds.splice(targetIndex, 0, id);
+
+    const ts = now();
+    for (const [index, resourceId] of orderedIds.entries()) {
+      await db.execute("UPDATE resources SET sort_order = $1, updated_at = $2 WHERE id = $3", [
+        (index + 1) * 1000,
+        ts,
+        resourceId,
+      ]);
+      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [
+        resourceId,
+      ]);
+      if (rows[0]) {
+        await enqueue(
+          db,
+          "resource",
+          resourceId,
+          "upsert",
+          rows[0] as unknown as Record<string, unknown>,
+        );
+      }
+    }
   });
 }
 
@@ -123,6 +206,7 @@ export async function moveResource(id: string, newParentId: string | null): Prom
     }
 
     const newPath = `${newPathPrefix}${id}`;
+    const newSortOrder = await getNewResourceSortOrder(node.workspace_id, newParentId);
     const ts = now();
 
     // Collect descendant ids BEFORE path rewrite (Req 5.6)
@@ -132,8 +216,8 @@ export async function moveResource(id: string, newParentId: string | null): Prom
     );
 
     await db.execute(
-      "UPDATE resources SET parent_id = $1, type = $2, path = $3, updated_at = $4 WHERE id = $5",
-      [newParentId, newType, newPath, ts, id],
+      "UPDATE resources SET parent_id = $1, type = $2, path = $3, sort_order = $4, updated_at = $5 WHERE id = $6",
+      [newParentId, newType, newPath, newSortOrder, ts, id],
     );
     await rewriteDescendantPaths(node.path, newPath);
 

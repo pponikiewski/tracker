@@ -9,6 +9,7 @@ import {
   listActiveResources,
   moveResource,
   renameResource,
+  reorderResourceBefore,
   setResourceColor,
   softDeleteSubtree,
   updateEvent,
@@ -38,6 +39,7 @@ interface ProjectsState {
   ) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
   move: (id: string, newParentId: string | null) => Promise<void>;
+  reorderBefore: (id: string, targetId: string) => Promise<void>;
   changeColor: (id: string, color: string | null) => Promise<void>;
   deleteSubtree: (id: string) => Promise<void>;
   liftAndDelete: (id: string) => Promise<void>;
@@ -102,6 +104,11 @@ export const useProjects = create<ProjectsState>((set, get) => ({
 
   move: async (id, newParentId) => {
     await moveResource(id, newParentId);
+    await get().refresh();
+  },
+
+  reorderBefore: async (id, targetId) => {
+    await reorderResourceBefore(id, targetId);
     await get().refresh();
   },
 

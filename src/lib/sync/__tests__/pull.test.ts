@@ -4,7 +4,7 @@ import type { Resource, TimeEvent, Workspace, WorkspaceMembership } from '@/lib/
 
 const mkResource = (id: string, updated_at: number, name = id): Resource => ({
   id, workspace_id: 'ws-1', parent_id: null, name, type: 'project', color: null,
-  path: id, cached_minutes: 0,
+  path: id, cached_minutes: 0, sort_order: 0,
   created_at: 1, updated_at, deleted_at: null,
 });
 

@@ -37,14 +37,31 @@ interface Props extends TreeContext {
   depth: number;
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  project: "PRJ",
-  stage: "ETP",
-  substage: "PDE",
-  task: "ZAD",
+const TYPE_TITLE = {
+  project: "Projekt",
+  stage: "Etap",
+  substage: "Podetap",
+  task: "Zadanie",
 };
 
 const MAX_VISIBLE_ASSIGNEES = 3;
+
+function shapeClass(type: ResourceNode["type"]): string {
+  switch (type) {
+    case "project":
+      return "h-3.5 w-3.5 rounded-sm";
+    case "stage":
+      return "h-3 w-3 rounded-sm";
+    case "substage":
+      return "h-2.5 w-2.5 rounded-[2px]";
+    case "task":
+      return "h-2 w-2 rounded-[2px]";
+  }
+}
+
+function shapeStyle(color: string): React.CSSProperties {
+  return { backgroundColor: color };
+}
 
 export function TreeNode(props: Props) {
   const { node, depth, expandedIds, selectedId, renamingId, draggingId, dropTargetId, dimmedIds } = props;
@@ -83,10 +100,16 @@ export function TreeNode(props: Props) {
         onDragOver={(e) => props.onDragOver(e, node.id)}
         onDrop={(e) => props.onDrop(e, node.id)}
         onDragEnd={props.onDragEnd}
-        onClick={() => !renaming && props.onSelect(node.id)}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          props.onStartRename(node.id);
+        onClick={(e) => {
+          if (renaming) return;
+          if (e.detail >= 3) {
+            props.onSelect(node.id);
+            props.onStartRename(node.id);
+            return;
+          }
+          if (e.detail !== 1) return;
+          props.onSelect(node.id);
+          if (hasChildren) props.onToggle(node.id);
         }}
         onContextMenu={(e) => props.onContextMenu(e, node.id)}
         className={`group flex cursor-default items-center gap-1 py-1 pr-2 text-sm transition-colors ${
@@ -98,15 +121,11 @@ export function TreeNode(props: Props) {
         } ${isDragging ? "opacity-40" : isDimmed ? "opacity-50" : ""}`}
         style={{ paddingLeft: 8 + depth * 16 }}
       >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (hasChildren) props.onToggle(node.id);
-          }}
+        <span
           className={`flex h-4 w-4 items-center justify-center text-neutral-500 ${
-            hasChildren ? "hover:text-neutral-200" : "invisible"
+            hasChildren ? "" : "invisible"
           }`}
+          aria-hidden="true"
         >
           <span
             className="inline-block transition-transform"
@@ -114,17 +133,14 @@ export function TreeNode(props: Props) {
           >
             ▶
           </span>
-        </button>
+        </span>
 
         <span
-          className="h-3 w-3 shrink-0 rounded-sm"
-          style={{ backgroundColor: node.effective_color }}
-          aria-hidden
+          className={`shrink-0 ${shapeClass(node.type)}`}
+          style={shapeStyle(node.effective_color)}
+          title={TYPE_TITLE[node.type]}
+          aria-hidden="true"
         />
-
-        <span className="w-9 shrink-0 text-[10px] font-mono uppercase tracking-wide text-neutral-500">
-          {TYPE_LABEL[node.type]}
-        </span>
 
         {renaming ? (
           <RenameInput

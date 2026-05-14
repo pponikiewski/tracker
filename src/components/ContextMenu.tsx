@@ -39,6 +39,7 @@ interface Props {
 export function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pickerEntry, setPickerEntry] = useState<AssignMenuItem | null>(null);
+  const [position, setPosition] = useState({ x, y });
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -55,12 +56,24 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
     };
   }, [onClose]);
 
+  useEffect(() => {
+    const menu = ref.current;
+    if (!menu) return;
+
+    const margin = 8;
+    const rect = menu.getBoundingClientRect();
+    setPosition({
+      x: Math.min(x, window.innerWidth - rect.width - margin),
+      y: Math.min(y, window.innerHeight - rect.height - margin),
+    });
+  }, [x, y, items]);
+
   return (
     <>
       <div
         ref={ref}
         className="fixed z-50 min-w-[220px] rounded-md border border-neutral-700 bg-neutral-900 py-1 text-sm shadow-2xl"
-        style={{ left: x, top: y }}
+        style={{ left: Math.max(8, position.x), top: Math.max(8, position.y) }}
       >
         {items.map((item, i) => {
           if ("separator" in item) {

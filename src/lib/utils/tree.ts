@@ -66,9 +66,14 @@ export function buildTree(resources: Resource[]): ResourceNode[] {
     }
   }
 
-  // Sort each level by name (stable, locale-aware).
+  // Sort each level by explicit user order, then stable creation/name fallback.
   const sortRecursive = (nodes: ResourceNode[]) => {
-    nodes.sort((a, b) => a.name.localeCompare(b.name));
+    nodes.sort(
+      (a, b) =>
+        a.sort_order - b.sort_order ||
+        a.created_at - b.created_at ||
+        a.name.localeCompare(b.name),
+    );
     nodes.forEach((n) => sortRecursive(n.children));
   };
   sortRecursive(roots);

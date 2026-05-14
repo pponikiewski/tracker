@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS resources (
   color TEXT,
   path TEXT NOT NULL,
   cached_minutes INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   deleted_at INTEGER
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS resources (
 
 CREATE INDEX IF NOT EXISTS idx_resources_path ON resources(path);
 CREATE INDEX IF NOT EXISTS idx_resources_parent ON resources(parent_id);
+CREATE INDEX IF NOT EXISTS idx_resources_parent_order ON resources(workspace_id, parent_id, sort_order, created_at);
 CREATE INDEX IF NOT EXISTS idx_resources_active ON resources(deleted_at) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS events (

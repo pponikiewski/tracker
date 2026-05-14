@@ -23,7 +23,6 @@ import {
   type ResourceType,
 } from "@/lib/db/types";
 import { isDescendantPath } from "@/lib/utils/tree";
-import { formatMinutes } from "@/lib/utils/time";
 
 const TYPE_LABEL: Record<ResourceType, string> = {
   project: "Projekt",
@@ -134,7 +133,6 @@ export function ProjectsView() {
     resources,
     tree,
     expandedIds,
-    loading,
     error,
     refresh,
     toggleExpanded,
@@ -142,6 +140,7 @@ export function ProjectsView() {
     addChild,
     rename,
     move,
+    reorderBefore,
     changeColor,
     deleteSubtree,
     liftAndDelete,
@@ -222,14 +221,6 @@ export function ProjectsView() {
     }
     return "";
   }, [assignmentFilter, workspaceMembers]);
-
-  const totalRootMinutes = useMemo(
-    () =>
-      resources
-        .filter((resource) => resource.parent_id === null)
-        .reduce((sum, resource) => sum + resource.cached_minutes, 0),
-    [resources],
-  );
 
   useEffect(() => {
     void refresh();
@@ -316,6 +307,14 @@ export function ProjectsView() {
     if (sourceId === targetId) return false;
     const target = findResource(targetId);
     if (!target) return false;
+    if (
+      source.type === "project" &&
+      target.type === "project" &&
+      source.parent_id === null &&
+      target.parent_id === null
+    ) {
+      return true;
+    }
     if (isDescendantPath(source.path, target.path)) return false;
     return canParent(target.type, source.type);
   };
@@ -341,7 +340,18 @@ export function ProjectsView() {
     setDropTargetId(null);
     if (!canDropOn(src, id)) return;
     try {
-      await move(src, id);
+      const source = findResource(src);
+      const target = findResource(id);
+      if (
+        source?.type === "project" &&
+        target?.type === "project" &&
+        source.parent_id === null &&
+        target.parent_id === null
+      ) {
+        await reorderBefore(src, id);
+      } else {
+        await move(src, id);
+      }
     } catch {
       /* validation error — silently ignore for MVP */
     }
@@ -500,11 +510,6 @@ export function ProjectsView() {
       <header className="flex items-start justify-between gap-3 border-b border-neutral-800 px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-neutral-100">Projekty</h1>
-          <p className="mt-1 text-xs text-neutral-500">
-            {loading
-              ? "Ładowanie..."
-              : `${resources.length} elementów · ${formatMinutes(totalRootMinutes)}`}
-          </p>
         </div>
         <button
           type="button"
