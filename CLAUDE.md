@@ -21,6 +21,8 @@ Kluczowe zmiany Fazy 6:
 - **Supabase migration**: `supabase/migrations/20260615000001_team_features.sql` dodaje `profiles`, `assignments`, indeksy, RLS i opcjonalny bucket `avatars`
 - **Sync fixes**: pull zachowuje `workspace_id` dla resources/events i synchronizuje team entities bez mieszania workspace'ów
 - **Testy**: dodane testy agregacji zespołu i eksportów raportu
+- **UI redesign**: górny pasek nawigacji zastąpiony stałym lewym sidebarem z workspace switcherem, ikonami, sync statusem i kontem
+- **History view**: nowy widok historii logów czasu z filtrem osoby/zakresu dat oraz edycją i soft-delete wpisów
 
 Poprzednia Faza 5 — Multi-Tenant Schema (DONE). Model multi-tenant oparty na Workspace'ach. Każdy Resource i Event należy do dokładnie jednego Workspace. Kluczowe zmiany:
 
@@ -151,11 +153,13 @@ tracker/
 Aktualne (Fazy 1-5):
 - `src/components/Tree/` — `TreeView`, `TreeNode`
 - `src/components/Dashboard/` — `DashboardView`, `StatsCard`, `ProjectsPieChart`, `DailyBarChart`
+- `src/components/History/` — `HistoryView`
+- `src/components/Sidebar/` — `Sidebar`
 - `src/components/` — `ContextMenu`, `PromptModal`, `ColorPickerModal`, `LogWorkModal`, `ProjectsView`
 - `src/components/Auth/` — `AuthGate`, `AuthModal`, `SyncStatusBadge`, `SyncStatusModal`, `validation.ts`
 - `src/components/Workspace/` — `WorkspaceSwitcher`, `WorkspaceSettingsPanel`, `WorkspaceCreateModal`, `InviteAcceptView`
 - `src/lib/db/` — `schema.ts` (SCHEMA_SQL + SCHEMA_V5_SQL), `types.ts`, `connection.ts` (runPhase5Migration), `queries.ts`, `workspaceQueries.ts`
-- `src/lib/utils/` — `time.ts`, `tree.ts`, `uuid.ts`, `ltree.ts` (pathToLtree, ltreeToPath)
+- `src/lib/utils/` — `time.ts`, `tree.ts`, `uuid.ts`, `ltree.ts` (pathToLtree, ltreeToPath), `history.ts` (groupEventsByDate, dayGroupLabel, formatTimestamp)
 - `src/lib/analytics/aggregate.ts`
 - `src/lib/utils/csv.ts`
 - `src/lib/hooks/useEventsRange.ts`

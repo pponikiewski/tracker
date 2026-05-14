@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/store/projects";
-import {
-  aggregate,
-  daysAgoIso,
-  fillDailyGaps,
-  type RangeStats,
-} from "@/lib/analytics/aggregate";
+import { aggregate, daysAgoIso, fillDailyGaps, type RangeStats } from "@/lib/analytics/aggregate";
 import { todayIso } from "@/lib/utils/time";
 import { useEventsRange } from "@/lib/hooks/useEventsRange";
 import { downloadCsv, eventsToCsv } from "@/lib/utils/csv";
@@ -33,10 +28,7 @@ export function DashboardView() {
     if (resources.length === 0) void refresh();
   }, [resources.length, refresh]);
 
-  const projects = useMemo(
-    () => resources.filter((r) => r.type === "project"),
-    [resources],
-  );
+  const projects = useMemo(() => resources.filter((r) => r.type === "project"), [resources]);
 
   const stats: RangeStats = useMemo(
     () => aggregate(events, resources, selected),
@@ -53,9 +45,7 @@ export function DashboardView() {
   const weekFrom = daysAgoIso(6);
   const monthFrom = daysAgoIso(29);
   const minutesIn = (from: string, to: string): number =>
-    events
-      .filter((e) => e.date >= from && e.date <= to)
-      .reduce((sum, e) => sum + e.minutes, 0);
+    events.filter((e) => e.date >= from && e.date <= to).reduce((sum, e) => sum + e.minutes, 0);
 
   const toggleProject = (id: string) => {
     const next = new Set(selected);
@@ -78,6 +68,7 @@ export function DashboardView() {
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       <header className="border-b border-neutral-800 px-4 py-3">
+        <h1 className="mb-3 text-lg font-semibold tracking-tight text-neutral-100">Raporty</h1>
         <div className="mb-3 flex items-center gap-2">
           <span className="text-[10px] uppercase tracking-wide text-neutral-500">Zakres:</span>
           <input
@@ -183,9 +174,7 @@ export function DashboardView() {
           <DailyBarChart data={filledDaily} />
         </div>
 
-        {loading && (
-          <div className="mt-4 text-center text-xs text-neutral-500">Ładowanie...</div>
-        )}
+        {loading && <div className="mt-4 text-center text-xs text-neutral-500">Ładowanie...</div>}
       </main>
     </div>
   );

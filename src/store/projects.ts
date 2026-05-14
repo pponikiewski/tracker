@@ -3,6 +3,7 @@ import type { Resource, ResourceNode, ResourceType } from "@/lib/db/types";
 import {
   createEvent,
   createResource,
+  deleteEvent,
   detachChildrenAsProjects,
   liftChildrenAndDelete,
   listActiveResources,
@@ -10,7 +11,9 @@ import {
   renameResource,
   setResourceColor,
   softDeleteSubtree,
+  updateEvent,
   type CreateEventInput,
+  type UpdateEventInput,
 } from "@/lib/db/queries";
 import { buildTree } from "@/lib/utils/tree";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -35,6 +38,8 @@ interface ProjectsState {
   liftAndDelete: (id: string) => Promise<void>;
   detachAsProjects: (id: string) => Promise<void>;
   logTime: (input: Omit<CreateEventInput, "workspaceId">) => Promise<void>;
+  updateLog: (input: UpdateEventInput) => Promise<void>;
+  deleteLog: (id: string) => Promise<void>;
 }
 
 export const useProjects = create<ProjectsState>((set, get) => ({
@@ -117,6 +122,16 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     const authState = useAuthStore.getState().state;
     const userId = authState.kind === "authed" ? authState.user.id : null;
     await createEvent({ ...input, workspaceId, userId });
+    await get().refresh();
+  },
+
+  updateLog: async (input) => {
+    await updateEvent(input);
+    await get().refresh();
+  },
+
+  deleteLog: async (id) => {
+    await deleteEvent(id);
     await get().refresh();
   },
 }));

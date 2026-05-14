@@ -1,36 +1,36 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useWorkspaceStore } from '@/store/workspace';
-import { useProfileStore } from '@/store/profile';
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useWorkspaceStore } from "@/store/workspace";
+import { useProfileStore } from "@/store/profile";
 import {
   computeMemberRows,
   teamRowsToCsv,
   teamRowsToMarkdown,
   type MemberRow,
   type TeamReportProfile,
-} from '@/lib/analytics/teamAnalytics';
-import { AvatarBadge } from '@/components/Profile/AvatarBadge';
-import { formatMinutes } from '@/lib/utils/time';
-import { todayIso } from '@/lib/utils/time';
-import { daysAgoIso } from '@/lib/analytics/aggregate';
-import { downloadCsv, downloadText } from '@/lib/utils/csv';
+} from "@/lib/analytics/teamAnalytics";
+import { AvatarBadge } from "@/components/Profile/AvatarBadge";
+import { formatMinutes } from "@/lib/utils/time";
+import { todayIso } from "@/lib/utils/time";
+import { daysAgoIso } from "@/lib/analytics/aggregate";
+import { downloadCsv, downloadText } from "@/lib/utils/csv";
 
 // ---- Date range presets ----
 
-type Preset = 'today' | 'week' | 'month' | 'custom';
+type Preset = "today" | "week" | "month" | "custom";
 
 interface DateRange {
   from: string;
   to: string;
 }
 
-function getPresetRange(preset: Exclude<Preset, 'custom'>): DateRange {
+function getPresetRange(preset: Exclude<Preset, "custom">): DateRange {
   const today = todayIso();
   switch (preset) {
-    case 'today':
+    case "today":
       return { from: today, to: today };
-    case 'week':
+    case "week":
       return { from: daysAgoIso(6), to: today };
-    case 'month':
+    case "month":
       return { from: daysAgoIso(29), to: today };
   }
 }
@@ -60,17 +60,17 @@ function MemberRowItem({ row }: MemberRowItemProps) {
           {profile.display_name}
         </span>
         <span className="text-sm font-medium text-neutral-200 shrink-0 tabular-nums">
-          {row.totalMinutes === 0 ? '0 min' : formatMinutes(row.totalMinutes)}
+          {row.totalMinutes === 0 ? "0 min" : formatMinutes(row.totalMinutes)}
         </span>
         {row.projectBreakdown.length > 0 && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
             className="ml-2 text-neutral-500 hover:text-neutral-200 transition-colors shrink-0 text-xs"
-            aria-label={expanded ? 'Zwiń' : 'Rozwiń'}
+            aria-label={expanded ? "Zwiń" : "Rozwiń"}
             aria-expanded={expanded}
           >
-            {expanded ? '▲' : '▼'}
+            {expanded ? "▲" : "▼"}
           </button>
         )}
         {row.projectBreakdown.length === 0 && (
@@ -83,10 +83,7 @@ function MemberRowItem({ row }: MemberRowItemProps) {
       {expanded && row.projectBreakdown.length > 0 && (
         <ul className="border-t border-neutral-700 bg-neutral-900 divide-y divide-neutral-800">
           {row.projectBreakdown.map((proj) => (
-            <li
-              key={proj.resourceId}
-              className="flex items-center justify-between px-4 py-2 pl-12"
-            >
+            <li key={proj.resourceId} className="flex items-center justify-between px-4 py-2 pl-12">
               <span className="text-xs text-neutral-400 truncate min-w-0 mr-3">
                 {proj.resourceName}
               </span>
@@ -115,14 +112,12 @@ export function TeamView() {
   const getProfile = useProfileStore((s) => s.getProfile);
 
   // ---- Date range state ----
-  const [preset, setPreset] = useState<Preset>('week');
+  const [preset, setPreset] = useState<Preset>("week");
   const [customFrom, setCustomFrom] = useState(() => daysAgoIso(6));
   const [customTo, setCustomTo] = useState(() => todayIso());
 
   const dateRange: DateRange =
-    preset === 'custom'
-      ? { from: customFrom, to: customTo }
-      : getPresetRange(preset);
+    preset === "custom" ? { from: customFrom, to: customTo } : getPresetRange(preset);
 
   // ---- Data state ----
   const [rows, setRows] = useState<MemberRow[]>([]);
@@ -136,11 +131,7 @@ export function TeamView() {
     setLoading(true);
     setError(null);
     try {
-      const result = await computeMemberRows(
-        activeWorkspaceId,
-        dateRange.from,
-        dateRange.to,
-      );
+      const result = await computeMemberRows(activeWorkspaceId, dateRange.from, dateRange.to);
       setRows(result);
 
       // Fetch profiles for all members in the result
@@ -149,7 +140,7 @@ export function TeamView() {
         await fetchProfiles(userIds);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nieznany błąd');
+      setError(e instanceof Error ? e.message : "Nieznany błąd");
     } finally {
       setLoading(false);
     }
@@ -204,39 +195,28 @@ export function TeamView() {
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       {/* Header with date range selector */}
       <header className="border-b border-neutral-800 px-4 py-3 shrink-0">
+        <h1 className="mb-3 text-lg font-semibold tracking-tight text-neutral-100">Zespół</h1>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] uppercase tracking-wide text-neutral-500">Zakres:</span>
 
           {/* Preset buttons */}
           <div className="flex gap-1">
-            <PresetButton
-              active={preset === 'today'}
-              onClick={() => setPreset('today')}
-            >
+            <PresetButton active={preset === "today"} onClick={() => setPreset("today")}>
               Dziś
             </PresetButton>
-            <PresetButton
-              active={preset === 'week'}
-              onClick={() => setPreset('week')}
-            >
+            <PresetButton active={preset === "week"} onClick={() => setPreset("week")}>
               Ten tydzień
             </PresetButton>
-            <PresetButton
-              active={preset === 'month'}
-              onClick={() => setPreset('month')}
-            >
+            <PresetButton active={preset === "month"} onClick={() => setPreset("month")}>
               Ten miesiąc
             </PresetButton>
-            <PresetButton
-              active={preset === 'custom'}
-              onClick={() => setPreset('custom')}
-            >
+            <PresetButton active={preset === "custom"} onClick={() => setPreset("custom")}>
               Własny zakres
             </PresetButton>
           </div>
 
           {/* Custom date inputs — shown when Custom Range is selected */}
-          {preset === 'custom' && (
+          {preset === "custom" && (
             <>
               <input
                 type="date"
@@ -321,8 +301,8 @@ function PresetButton({
       onClick={onClick}
       className={`rounded border px-2 py-1 text-[11px] transition-colors ${
         active
-          ? 'border-blue-500 bg-blue-900/40 text-blue-300'
-          : 'border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100'
+          ? "border-blue-500 bg-blue-900/40 text-blue-300"
+          : "border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
       }`}
     >
       {children}

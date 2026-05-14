@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import type { Resource } from "@/lib/db/types";
+import type { TimeEvent } from "@/lib/db/types";
 import { parseTime, todayIso } from "@/lib/utils/time";
 
 interface Props {
-  resource: Resource;
+  resourceName: string;
+  event?: TimeEvent;
   onSubmit: (input: {
     date: string;
     minutes: number;
@@ -15,13 +16,13 @@ interface Props {
   onCancel: () => void;
 }
 
-export function LogWorkModal({ resource, onSubmit, onCancel }: Props) {
-  const [date, setDate] = useState(todayIso());
-  const [timeInput, setTimeInput] = useState("");
-  const [goal, setGoal] = useState("");
-  const [topics, setTopics] = useState("");
-  const [notes, setNotes] = useState("");
-  const [report, setReport] = useState("");
+export function LogWorkModal({ resourceName, event, onSubmit, onCancel }: Props) {
+  const [date, setDate] = useState(event?.date ?? todayIso());
+  const [timeInput, setTimeInput] = useState(event ? String(event.minutes) : "");
+  const [goal, setGoal] = useState(event?.goal ?? "");
+  const [topics, setTopics] = useState(event?.topics ?? "");
+  const [notes, setNotes] = useState(event?.notes ?? "");
+  const [report, setReport] = useState(event?.report ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   const minutes = parseTime(timeInput);
@@ -54,8 +55,10 @@ export function LogWorkModal({ resource, onSubmit, onCancel }: Props) {
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
       <div className="w-[28rem] rounded-md border border-neutral-700 bg-neutral-900 p-4 shadow-2xl">
-        <h2 className="mb-1 text-sm font-semibold text-neutral-200">Loguj czas</h2>
-        <p className="mb-3 truncate text-xs text-neutral-500">{resource.name}</p>
+        <h2 className="mb-1 text-sm font-semibold text-neutral-200">
+          {event ? "Edytuj wpis" : "Loguj czas"}
+        </h2>
+        <p className="mb-3 truncate text-xs text-neutral-500">{resourceName}</p>
 
         <div className="mb-3 grid grid-cols-2 gap-2">
           <label className="text-xs text-neutral-400">

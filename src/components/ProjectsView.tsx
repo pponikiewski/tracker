@@ -9,8 +9,15 @@ import { ContextMenu, type MenuEntry, type AssignMenuItem } from "./ContextMenu"
 import { PromptModal } from "./PromptModal";
 import { ColorPickerModal } from "./ColorPickerModal";
 import { LogWorkModal } from "./LogWorkModal";
-import { canParent, defaultChildType, type Resource, type ResourceNode, type ResourceType } from "@/lib/db/types";
+import {
+  canParent,
+  defaultChildType,
+  type Resource,
+  type ResourceNode,
+  type ResourceType,
+} from "@/lib/db/types";
 import { isDescendantPath } from "@/lib/utils/tree";
+import { formatMinutes } from "@/lib/utils/time";
 
 const TYPE_LABEL: Record<ResourceType, string> = {
   project: "Projekt",
@@ -208,6 +215,14 @@ export function ProjectsView() {
     return "";
   }, [assignmentFilter, workspaceMembers]);
 
+  const totalRootMinutes = useMemo(
+    () =>
+      resources
+        .filter((resource) => resource.parent_id === null)
+        .reduce((sum, resource) => sum + resource.cached_minutes, 0),
+    [resources],
+  );
+
   useEffect(() => {
     void refresh();
   }, [refresh, activeWorkspaceId]);
@@ -219,8 +234,7 @@ export function ProjectsView() {
     return () => document.removeEventListener("contextmenu", onCtx);
   }, []);
 
-  const findResource = (id: string): Resource | undefined =>
-    resources.find((r) => r.id === id);
+  const findResource = (id: string): Resource | undefined => resources.find((r) => r.id === id);
 
   const handleContextEmpty = (e: React.MouseEvent) => {
     setMenu({ x: e.clientX, y: e.clientY, targetId: null });
@@ -448,16 +462,22 @@ export function ProjectsView() {
 
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
-        <span className="text-xs uppercase tracking-wide text-neutral-500">
-          Drzewo projektów
-          <span className="ml-3 normal-case text-neutral-600">
-            Ctrl+N nowy · F2 zmień nazwę · L log · Delete usuń · Drag-drop
-          </span>
-        </span>
-        <span className="text-xs text-neutral-500">
-          {loading ? "Ładowanie..." : `${resources.length} węzłów`}
-        </span>
+      <header className="flex items-start justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight text-neutral-100">Projekty</h1>
+          <p className="mt-1 text-xs text-neutral-500">
+            {loading
+              ? "Ładowanie..."
+              : `${resources.length} elementów · ${formatMinutes(totalRootMinutes)}`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openNewProjectPrompt}
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+        >
+          + Nowy projekt
+        </button>
       </header>
 
       {error && (
@@ -531,10 +551,6 @@ export function ProjectsView() {
         )}
       </main>
 
-      <footer className="border-t border-neutral-800 px-4 py-1.5 text-[10px] text-neutral-500">
-        Faza 6 · Team visibility
-      </footer>
-
       {menu && (
         <ContextMenu
           x={menu.x}
@@ -567,7 +583,7 @@ export function ProjectsView() {
 
       {logWorkResource && (
         <LogWorkModal
-          resource={logWorkResource}
+          resourceName={logWorkResource.name}
           onSubmit={async (input) => {
             await logTime({ resourceId: logWorkResource.id, ...input });
             setLogWorkResource(null);

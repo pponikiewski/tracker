@@ -1,10 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { AuthGate } from "@/components/Auth/AuthGate";
 import { LoginPage } from "@/components/Auth/LoginPage";
-import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
-import { ProjectsView } from "./components/ProjectsView";
-import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
+import { Sidebar, type Tab } from "@/components/Sidebar/Sidebar";
 import { WorkspaceEmptyState } from "@/components/Workspace/WorkspaceEmptyState";
+import { ProjectsView } from "./components/ProjectsView";
 import { useAuthStore } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
 
@@ -16,7 +14,9 @@ const TeamView = lazy(() =>
   import("./components/Team/TeamView").then((m) => ({ default: m.TeamView })),
 );
 
-type Tab = "projects" | "dashboard" | "team";
+const HistoryView = lazy(() =>
+  import("./components/History/HistoryView").then((m) => ({ default: m.HistoryView })),
+);
 
 function App() {
   const [tab, setTab] = useState<Tab>("projects");
@@ -28,9 +28,7 @@ function App() {
   const workspaceLoading = useWorkspaceStore((s) => s.loading);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const memberships = useWorkspaceStore((s) => s.memberships);
-  const activeMemberCount = memberships.filter(
-    (m) => m.workspace_id === activeWorkspaceId,
-  ).length;
+  const activeMemberCount = memberships.filter((m) => m.workspace_id === activeWorkspaceId).length;
   const showTeamTab = activeMemberCount > 1;
 
   useEffect(() => {
@@ -63,7 +61,10 @@ function App() {
       } else if (e.key === "2") {
         e.preventDefault();
         setTab("dashboard");
-      } else if (e.key === "3" && showTeamTab) {
+      } else if (e.key === "3") {
+        e.preventDefault();
+        setTab("history");
+      } else if (e.key === "4" && showTeamTab) {
         e.preventDefault();
         setTab("team");
       }
@@ -76,7 +77,7 @@ function App() {
   if (authState.kind === "loading") {
     return (
       <div className="flex h-full items-center justify-center bg-neutral-950">
-        <span className="text-sm text-neutral-500">Ładowanie…</span>
+        <span className="text-sm text-neutral-500">Ładowanie...</span>
       </div>
     );
   }
@@ -96,36 +97,26 @@ function App() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-neutral-950">
-      <nav className="flex shrink-0 items-center gap-1 border-b border-neutral-800 bg-neutral-900 px-3 py-1.5">
-        <span className="mr-3 text-xs font-semibold tracking-tight text-neutral-100">
-          tracker
-        </span>
-        <TabButton active={tab === "projects"} onClick={() => setTab("projects")} hint="Ctrl+1">
-          Projekty
-        </TabButton>
-        <TabButton active={tab === "dashboard"} onClick={() => setTab("dashboard")} hint="Ctrl+2">
-          Dashboard
-        </TabButton>
-        {showTeamTab && (
-          <TabButton active={tab === "team"} onClick={() => setTab("team")} hint="Ctrl+3">
-            Team
-          </TabButton>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <WorkspaceSwitcher />
-          <SyncStatusBadge />
-          <AuthGate />
-        </div>
-      </nav>
+    <div className="flex h-full bg-neutral-950 text-neutral-100">
+      <Sidebar tab={tab} onTabChange={setTab} showTeamTab={showTeamTab} />
       <div className="flex-1 overflow-hidden">
         {tab === "projects" ? (
           <ProjectsView />
+        ) : tab === "history" ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+                Ładowanie historii...
+              </div>
+            }
+          >
+            <HistoryView />
+          </Suspense>
         ) : tab === "team" ? (
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-sm text-neutral-500">
-                Ładowanie widoku zespołu…
+                Ładowanie widoku zespołu...
               </div>
             }
           >
@@ -135,7 +126,7 @@ function App() {
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-sm text-neutral-500">
-                Ładowanie dashboardu…
+                Ładowanie dashboardu...
               </div>
             }
           >
@@ -144,33 +135,6 @@ function App() {
         )}
       </div>
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  hint,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={hint}
-      className={`rounded px-3 py-1 text-xs transition-colors ${
-        active
-          ? "bg-blue-600 text-white"
-          : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

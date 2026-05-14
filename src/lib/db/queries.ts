@@ -17,10 +17,7 @@ export async function listActiveResources(workspaceId: string): Promise<Resource
 
 export async function getResource(id: string): Promise<Resource | null> {
   const db = await getDb();
-  const rows = await db.select<Resource[]>(
-    "SELECT * FROM resources WHERE id = $1 LIMIT 1",
-    [id],
-  );
+  const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1 LIMIT 1", [id]);
   return rows[0] ?? null;
 }
 
@@ -50,14 +47,21 @@ export async function createResource(input: CreateResourceInput): Promise<string
       `INSERT INTO resources
          (id, parent_id, name, type, color, path, cached_minutes, workspace_id, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $8)`,
-      [id, input.parentId, input.name, input.type, input.color ?? null, path, input.workspaceId, ts],
+      [
+        id,
+        input.parentId,
+        input.name,
+        input.type,
+        input.color ?? null,
+        path,
+        input.workspaceId,
+        ts,
+      ],
     );
 
-    const rows = await db.select<Resource[]>(
-      "SELECT * FROM resources WHERE id = $1",
-      [id],
-    );
-    if (rows[0]) await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
+    if (rows[0])
+      await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
 
     return id;
   });
@@ -65,29 +69,27 @@ export async function createResource(input: CreateResourceInput): Promise<string
 
 export async function renameResource(id: string, name: string): Promise<void> {
   await withTx(async (db) => {
-    await db.execute(
-      "UPDATE resources SET name = $1, updated_at = $2 WHERE id = $3",
-      [name, now(), id],
-    );
-    const rows = await db.select<Resource[]>(
-      "SELECT * FROM resources WHERE id = $1",
-      [id],
-    );
-    if (rows[0]) await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    await db.execute("UPDATE resources SET name = $1, updated_at = $2 WHERE id = $3", [
+      name,
+      now(),
+      id,
+    ]);
+    const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
+    if (rows[0])
+      await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
   });
 }
 
 export async function setResourceColor(id: string, color: string | null): Promise<void> {
   await withTx(async (db) => {
-    await db.execute(
-      "UPDATE resources SET color = $1, updated_at = $2 WHERE id = $3",
-      [color, now(), id],
-    );
-    const rows = await db.select<Resource[]>(
-      "SELECT * FROM resources WHERE id = $1",
-      [id],
-    );
-    if (rows[0]) await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    await db.execute("UPDATE resources SET color = $1, updated_at = $2 WHERE id = $3", [
+      color,
+      now(),
+      id,
+    ]);
+    const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
+    if (rows[0])
+      await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
   });
 }
 
@@ -115,9 +117,7 @@ export async function moveResource(id: string, newParentId: string | null): Prom
         throw new Error("Nie można przenieść węzła pod jego własne dziecko");
       }
       if (!canParent(parent.type, node.type)) {
-        throw new Error(
-          `Typ ${node.type} nie może być dzieckiem ${parent.type}`,
-        );
+        throw new Error(`Typ ${node.type} nie może być dzieckiem ${parent.type}`);
       }
       newPathPrefix = `${parent.path}/`;
     }
@@ -144,11 +144,9 @@ export async function moveResource(id: string, newParentId: string | null): Prom
     // Enqueue self + every descendant (Req 5.6)
     const affectedIds = [id, ...descendants.map((d) => d.id)];
     for (const rid of affectedIds) {
-      const rows = await db.select<Resource[]>(
-        "SELECT * FROM resources WHERE id = $1",
-        [rid],
-      );
-      if (rows[0]) await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
+      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
+      if (rows[0])
+        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
   });
 }
@@ -172,10 +170,7 @@ async function recalcAncestorChain(path: string): Promise<void> {
       [target.path, `${target.path}/%`],
     );
     const total = rows[0]?.total ?? 0;
-    await db.execute(
-      "UPDATE resources SET cached_minutes = $1 WHERE id = $2",
-      [total, id],
-    );
+    await db.execute("UPDATE resources SET cached_minutes = $1 WHERE id = $2", [total, id]);
   }
 }
 
@@ -213,19 +208,15 @@ export async function softDeleteSubtree(id: string): Promise<void> {
 
     // Enqueue each affected resource (op='upsert' per Req 5.4)
     for (const { id: rid } of resourceIds) {
-      const rows = await db.select<Resource[]>(
-        "SELECT * FROM resources WHERE id = $1",
-        [rid],
-      );
-      if (rows[0]) await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
+      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
+      if (rows[0])
+        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
     // Enqueue each affected event (Req 5.5)
     for (const { id: eid } of eventIds) {
-      const rows = await db.select<TimeEvent[]>(
-        "SELECT * FROM events WHERE id = $1",
-        [eid],
-      );
-      if (rows[0]) await enqueue(db, "event", eid, "upsert", rows[0] as unknown as Record<string, unknown>);
+      const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [eid]);
+      if (rows[0])
+        await enqueue(db, "event", eid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
   });
 }
@@ -265,19 +256,17 @@ export async function liftChildrenAndDelete(id: string): Promise<void> {
       allAffectedIds.push(c.id, ...descendants.map((d) => d.id));
     }
 
-    await db.execute(
-      "UPDATE resources SET deleted_at = $1, updated_at = $1 WHERE id = $2",
-      [ts, id],
-    );
+    await db.execute("UPDATE resources SET deleted_at = $1, updated_at = $1 WHERE id = $2", [
+      ts,
+      id,
+    ]);
     allAffectedIds.push(id);
 
     // Enqueue all modified resources
     for (const rid of allAffectedIds) {
-      const rows = await db.select<Resource[]>(
-        "SELECT * FROM resources WHERE id = $1",
-        [rid],
-      );
-      if (rows[0]) await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
+      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
+      if (rows[0])
+        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
   });
 }
@@ -293,10 +282,11 @@ async function rewriteDescendantPaths(oldPrefix: string, newPrefix: string): Pro
   );
   for (const d of descendants) {
     const updated = `${newPrefix}${d.path.slice(oldPrefix.length)}`;
-    await db.execute(
-      "UPDATE resources SET path = $1, updated_at = $2 WHERE id = $3",
-      [updated, now(), d.id],
-    );
+    await db.execute("UPDATE resources SET path = $1, updated_at = $2 WHERE id = $3", [
+      updated,
+      now(),
+      d.id,
+    ]);
   }
 }
 
@@ -326,19 +316,17 @@ export async function detachChildrenAsProjects(id: string): Promise<void> {
       allAffectedIds.push(c.id, ...descendants.map((d) => d.id));
     }
 
-    await db.execute(
-      "UPDATE resources SET deleted_at = $1, updated_at = $1 WHERE id = $2",
-      [ts, id],
-    );
+    await db.execute("UPDATE resources SET deleted_at = $1, updated_at = $1 WHERE id = $2", [
+      ts,
+      id,
+    ]);
     allAffectedIds.push(id);
 
     // Enqueue all modified resources
     for (const rid of allAffectedIds) {
-      const rows = await db.select<Resource[]>(
-        "SELECT * FROM resources WHERE id = $1",
-        [rid],
-      );
-      if (rows[0]) await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
+      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
+      if (rows[0])
+        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
   });
 }
@@ -382,11 +370,9 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
     await recalcCachedMinutesForResource(input.resourceId);
 
     // Enqueue the event only (recalcCachedMinutesForResource does NOT bump updated_at on resources)
-    const rows = await db.select<TimeEvent[]>(
-      "SELECT * FROM events WHERE id = $1",
-      [id],
-    );
-    if (rows[0]) await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
+    if (rows[0])
+      await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
 
     return id;
   });
@@ -424,6 +410,97 @@ export async function listEventsInRange(
   );
 }
 
+export async function listEventsForHistory(
+  workspaceId: string,
+  fromIso: string,
+  toIso: string,
+  userId?: string | null,
+): Promise<EventWithResource[]> {
+  const db = await getDb();
+  const base = `SELECT e.*, r.name AS resource_name, r.path AS resource_path
+     FROM events e
+     JOIN resources r ON r.id = e.resource_id
+     WHERE e.deleted_at IS NULL
+       AND r.deleted_at IS NULL
+       AND e.workspace_id = $1
+       AND e.date >= $2 AND e.date <= $3`;
+
+  if (userId) {
+    return db.select<EventWithResource[]>(
+      `${base} AND e.user_id = $4 ORDER BY e.date DESC, e.created_at DESC`,
+      [workspaceId, fromIso, toIso, userId],
+    );
+  }
+
+  return db.select<EventWithResource[]>(`${base} ORDER BY e.date DESC, e.created_at DESC`, [
+    workspaceId,
+    fromIso,
+    toIso,
+  ]);
+}
+
+export interface UpdateEventInput {
+  id: string;
+  date: string;
+  minutes: number;
+  goal?: string;
+  topics?: string;
+  notes?: string;
+  report?: string;
+}
+
+export async function updateEvent(input: UpdateEventInput): Promise<void> {
+  return withTx(async (db) => {
+    const ts = now();
+    const existing = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [input.id]);
+    const prev = existing[0];
+    if (!prev) return;
+
+    await db.execute(
+      `UPDATE events
+         SET date = $1, minutes = $2, goal = $3, topics = $4,
+             notes = $5, report = $6, updated_at = $7
+       WHERE id = $8`,
+      [
+        input.date,
+        input.minutes,
+        input.goal ?? null,
+        input.topics ?? null,
+        input.notes ?? null,
+        input.report ?? null,
+        ts,
+        input.id,
+      ],
+    );
+
+    if (prev.minutes !== input.minutes || prev.date !== input.date) {
+      await recalcCachedMinutesForResource(prev.resource_id);
+    }
+
+    const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [input.id]);
+    if (rows[0]) {
+      await enqueue(db, "event", input.id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    }
+  });
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  return withTx(async (db) => {
+    const ts = now();
+    const existing = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
+    const prev = existing[0];
+    if (!prev) return;
+
+    await db.execute("UPDATE events SET deleted_at = $1, updated_at = $1 WHERE id = $2", [ts, id]);
+    await recalcCachedMinutesForResource(prev.resource_id);
+
+    const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
+    if (rows[0]) {
+      await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    }
+  });
+}
+
 /**
  * Recalculate cached_minutes for the given resource and ALL its ancestors.
  * Each row's cached_minutes = sum of minutes for active events in its subtree.
@@ -448,10 +525,7 @@ export async function recalcCachedMinutesForResource(resourceId: string): Promis
       [target.path, `${target.path}/%`],
     );
     const total = rows[0]?.total ?? 0;
-    await db.execute(
-      "UPDATE resources SET cached_minutes = $1 WHERE id = $2",
-      [total, id],
-    );
+    await db.execute("UPDATE resources SET cached_minutes = $1 WHERE id = $2", [total, id]);
   }
 }
 
