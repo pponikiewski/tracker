@@ -29,8 +29,13 @@ interface ProjectsState {
   refresh: (options?: { showLoading?: boolean }) => Promise<void>;
   toggleExpanded: (id: string) => void;
 
-  addProject: (name: string) => Promise<void>;
-  addChild: (parentId: string, name: string, type: ResourceType) => Promise<void>;
+  addProject: (name: string, color?: string | null) => Promise<void>;
+  addChild: (
+    parentId: string,
+    name: string,
+    type: ResourceType,
+    color?: string | null,
+  ) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
   move: (id: string, newParentId: string | null) => Promise<void>;
   changeColor: (id: string, color: string | null) => Promise<void>;
@@ -75,17 +80,17 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     set({ expandedIds: next });
   },
 
-  addProject: async (name) => {
+  addProject: async (name, color) => {
     const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     if (!workspaceId) return;
-    await createResource({ parentId: null, name, type: "project", workspaceId });
+    await createResource({ parentId: null, name, type: "project", color, workspaceId });
     await get().refresh();
   },
 
-  addChild: async (parentId, name, type) => {
+  addChild: async (parentId, name, type, color) => {
     const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     if (!workspaceId) return;
-    await createResource({ parentId, name, type, workspaceId });
+    await createResource({ parentId, name, type, color, workspaceId });
     set((s) => ({ expandedIds: new Set([...s.expandedIds, parentId]) }));
     await get().refresh();
   },

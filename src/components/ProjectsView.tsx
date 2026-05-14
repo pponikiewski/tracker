@@ -7,9 +7,14 @@ import { useAuthStore } from "@/store/auth";
 import { usePresenceStore } from "@/store/presence";
 import { TreeView } from "./Tree/TreeView";
 import { ContextMenu, type MenuEntry, type AssignMenuItem } from "./ContextMenu";
-import { PromptModal } from "./PromptModal";
 import { ColorPickerModal } from "./ColorPickerModal";
+import { CreateResourceModal } from "./CreateResourceModal";
 import { LogWorkModal } from "./LogWorkModal";
+import {
+  getColorPresetsForType,
+  getDefaultChildColor,
+  getDefaultColorForType,
+} from "./colorPresets";
 import {
   canParent,
   defaultChildType,
@@ -36,10 +41,12 @@ interface MenuState {
   targetId: string | null;
 }
 
-interface PromptState {
+interface CreateModalState {
   title: string;
   placeholder?: string;
-  onConfirm: (value: string) => void;
+  initialColor: string;
+  presets: string[];
+  onConfirm: (input: { name: string; color: string | null }) => void;
 }
 
 const isEditableTarget = (el: EventTarget | null): boolean => {
@@ -155,7 +162,7 @@ export function ProjectsView() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [prompt, setPrompt] = useState<PromptState | null>(null);
+  const [createModal, setCreateModal] = useState<CreateModalState | null>(null);
   const [colorTargetId, setColorTargetId] = useState<string | null>(null);
   const [logWorkResource, setLogWorkResource] = useState<Resource | null>(null);
 
@@ -245,6 +252,18 @@ export function ProjectsView() {
 
   const findResource = (id: string): Resource | undefined => resources.find((r) => r.id === id);
 
+  const resolveResourceColor = (resource: Resource): string => {
+    if (resource.color) return resource.color;
+
+    const ancestorIds = resource.path.split("/").slice(0, -1).reverse();
+    for (const ancestorId of ancestorIds) {
+      const ancestor = findResource(ancestorId);
+      if (ancestor?.color) return ancestor.color;
+    }
+
+    return getDefaultColorForType(resource.type);
+  };
+
   const handleContextEmpty = (e: React.MouseEvent) => {
     setMenu({ x: e.clientX, y: e.clientY, targetId: null });
   };
@@ -257,23 +276,30 @@ export function ProjectsView() {
   };
 
   const openNewProjectPrompt = () => {
-    setPrompt({
+    setCreateModal({
       title: "Nowy Projekt",
       placeholder: "Nazwa projektu",
-      onConfirm: async (name) => {
-        await addProject(name);
-        setPrompt(null);
+      initialColor: getDefaultColorForType("project"),
+      presets: getColorPresetsForType("project"),
+      onConfirm: async ({ name, color }) => {
+        await addProject(name, color);
+        setCreateModal(null);
       },
     });
   };
 
   const openAddChildPrompt = (parentId: string, type: ResourceType) => {
-    setPrompt({
+    const parent = findResource(parentId);
+    const parentColor = parent ? resolveResourceColor(parent) : null;
+
+    setCreateModal({
       title: `Dodaj ${TYPE_LABEL[type]}`,
       placeholder: `Nazwa: ${TYPE_LABEL[type].toLowerCase()}`,
-      onConfirm: async (name) => {
-        await addChild(parentId, name, type);
-        setPrompt(null);
+      initialColor: getDefaultChildColor(parentColor, type),
+      presets: getColorPresetsForType(type),
+      onConfirm: async ({ name, color }) => {
+        await addChild(parentId, name, type, color);
+        setCreateModal(null);
       },
     });
   };
@@ -521,8 +547,8 @@ export function ProjectsView() {
       <main className="flex-1 overflow-auto">
         {!hasMatches ? (
           <div className="px-4 py-12 text-center text-sm text-neutral-500">
-            Brak zasobów przypisanych do{" "}
-            <span className="text-neutral-300">{emptyStateLabel}</span>.
+            Brak zasobów przypisanych do <span className="text-neutral-300">{emptyStateLabel}</span>
+            .
           </div>
         ) : (
           <TreeView
@@ -569,19 +595,22 @@ export function ProjectsView() {
         />
       )}
 
-      {prompt && (
-        <PromptModal
-          title={prompt.title}
-          placeholder={prompt.placeholder}
+      {createModal && (
+        <CreateResourceModal
+          title={createModal.title}
+          placeholder={createModal.placeholder}
           confirmLabel="Utwórz"
-          onConfirm={prompt.onConfirm}
-          onCancel={() => setPrompt(null)}
+          initialColor={createModal.initialColor}
+          presets={createModal.presets}
+          onConfirm={createModal.onConfirm}
+          onCancel={() => setCreateModal(null)}
         />
       )}
 
       {colorTargetId && (
         <ColorPickerModal
           initial={findResource(colorTargetId)?.color ?? null}
+          presets={getColorPresetsForType(findResource(colorTargetId)?.type ?? "project")}
           onConfirm={async (color) => {
             await changeColor(colorTargetId, color);
             setColorTargetId(null);
