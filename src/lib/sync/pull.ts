@@ -35,6 +35,7 @@ function cloudToLocalResource(c: Record<string, unknown>): Resource {
   }
   return {
     id: c.id as string,
+    workspace_id: c.workspace_id as string,
     parent_id: (c.parent_id as string | null) ?? null,
     name: c.name as string,
     type: c.type as Resource['type'],
@@ -50,6 +51,7 @@ function cloudToLocalResource(c: Record<string, unknown>): Resource {
 function cloudToLocalEvent(c: Record<string, unknown>): TimeEvent {
   return {
     id: c.id as string,
+    workspace_id: c.workspace_id as string,
     resource_id: c.resource_id as string,
     date: c.date as string,
     minutes: c.minutes as number,
@@ -101,7 +103,7 @@ function cloudToLocalAssignment(c: Record<string, unknown>): Assignment {
 
 /**
  * Ensures a Personal_Workspace exists in Supabase for the given user.
- * If one already exists, returns its id.
+ * If the user can already see any workspace (owner or member), returns it.
  * If none exists, creates one (with owner membership) and returns the new id.
  * Throws on creation failure — caller should set error status.
  * Requirements: 2.1, 2.6
@@ -109,18 +111,20 @@ function cloudToLocalAssignment(c: Record<string, unknown>): Assignment {
 export async function ensurePersonalWorkspace(userId: string): Promise<string> {
   if (!supabase) throw new Error('Supabase not configured');
 
-  // Check if user already has a workspace
-  const { data: existing, error: fetchErr } = await supabase
+  // Check if the user already has access to any workspace. RLS limits this to
+  // owned or joined workspaces, so members must not get a duplicate personal
+  // workspace just because owner_id !== userId.
+  const { data: accessible, error: accessibleErr } = await supabase
     .from('workspaces')
     .select('id')
-    .eq('owner_id', userId)
     .is('deleted_at', null)
+    .order('created_at', { ascending: true })
     .limit(1);
 
-  if (fetchErr) throw new Error(fetchErr.message);
+  if (accessibleErr) throw new Error(accessibleErr.message);
 
-  if (existing && existing.length > 0 && existing[0]) {
-    return existing[0].id as string;
+  if (accessible && accessible.length > 0 && accessible[0]) {
+    return accessible[0].id as string;
   }
 
   // No workspace found — create Personal_Workspace
@@ -182,19 +186,39 @@ export async function runInitialPull(userId: string): Promise<void> {
   if (!supabase) return;
   // Req 8.1: only pull once per user per process
   if (pulledForUser.has(userId)) return;
+  await runPull(userId, /* isInitial */ true);
+}
+
+/**
+ * Lighter pull used to refresh local SQLite from cloud changes made by team
+ * members. Re-runs the full LWW merge — safe because merging is idempotent.
+ *
+ * Skips the personal-workspace provisioning step (already done at first login)
+ * and uses sync status 'syncing' instead of 'initial-pull' so the badge does
+ * not flash "Syncing initial..." every 30 seconds.
+ */
+export async function runIncrementalPull(userId: string): Promise<void> {
+  if (!supabase) return;
+  await runPull(userId, /* isInitial */ false);
+}
+
+async function runPull(userId: string, isInitial: boolean): Promise<void> {
+  if (!supabase) return;
 
   const auth = useAuthStore.getState();
-  auth.setSyncStatus({ kind: 'initial-pull' });
+  auth.setSyncStatus({ kind: isInitial ? 'initial-pull' : 'syncing' });
 
   // Step 1: Ensure Personal_Workspace exists in Supabase (Req 2.1, 2.6)
-  try {
-    await ensurePersonalWorkspace(userId);
-  } catch (e) {
-    auth.setSyncStatus({
-      kind: 'error',
-      message: e instanceof Error ? e.message : 'failed to provision workspace',
-    });
-    return;
+  if (isInitial) {
+    try {
+      await ensurePersonalWorkspace(userId);
+    } catch (e) {
+      auth.setSyncStatus({
+        kind: 'error',
+        message: e instanceof Error ? e.message : 'failed to provision workspace',
+      });
+      return;
+    }
   }
 
   // Step 2: Fetch workspaces + workspace_memberships in parallel (Req 7.5)
@@ -376,29 +400,31 @@ function isMissingTable(err: SbError): boolean {
   try {
     for (const r of rMerge.writeSqlite) {
       await db.execute(
-        `INSERT INTO resources (id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at, deleted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        `INSERT INTO resources (id, workspace_id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT(id) DO UPDATE SET
+           workspace_id=excluded.workspace_id,
            parent_id=excluded.parent_id, name=excluded.name, type=excluded.type,
            color=excluded.color, path=excluded.path, cached_minutes=excluded.cached_minutes,
            created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
         [
-          r.id, r.parent_id, r.name, r.type, r.color, r.path, r.cached_minutes,
+          r.id, r.workspace_id, r.parent_id, r.name, r.type, r.color, r.path, r.cached_minutes,
           r.created_at, r.updated_at, r.deleted_at,
         ],
       );
     }
     for (const e of eMerge.writeSqlite) {
       await db.execute(
-        `INSERT INTO events (id, resource_id, date, minutes, goal, topics, notes, report, user_id, created_at, updated_at, deleted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `INSERT INTO events (id, workspace_id, resource_id, date, minutes, goal, topics, notes, report, user_id, created_at, updated_at, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT(id) DO UPDATE SET
+           workspace_id=excluded.workspace_id,
            resource_id=excluded.resource_id, date=excluded.date, minutes=excluded.minutes,
            goal=excluded.goal, topics=excluded.topics, notes=excluded.notes, report=excluded.report,
            user_id=excluded.user_id,
            created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
         [
-          e.id, e.resource_id, e.date, e.minutes, e.goal, e.topics, e.notes, e.report, e.user_id,
+          e.id, e.workspace_id, e.resource_id, e.date, e.minutes, e.goal, e.topics, e.notes, e.report, e.user_id,
           e.created_at, e.updated_at, e.deleted_at,
         ],
       );
@@ -450,12 +476,23 @@ function isMissingTable(err: SbError): boolean {
   }
 
   // Req 8.1: mark as pulled for this process session only after success
-  pulledForUser.add(userId);
+  if (isInitial) pulledForUser.add(userId);
   auth.setSyncStatus({ kind: 'idle' });
   auth.setLastSyncAt(Date.now());
 
   // Reload UI — lazy import avoids circular dep
+  const { useWorkspaceStore } = await import('@/store/workspace');
   const { useProjects } = await import('@/store/projects');
+  await useWorkspaceStore.getState().refresh();
+  const workspaceState = useWorkspaceStore.getState();
+  const activeWorkspaceStillExists =
+    workspaceState.activeWorkspaceId !== null &&
+    workspaceState.workspaces.some(
+      (w) => w.id === workspaceState.activeWorkspaceId && w.deleted_at === null,
+    );
+  if (!activeWorkspaceStillExists) {
+    await workspaceState.restoreActiveWorkspace(userId);
+  }
   await useProjects.getState().refresh();
 
   // Drain newly enqueued local-wins

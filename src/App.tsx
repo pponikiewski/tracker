@@ -32,6 +32,7 @@ function App() {
   // If the Team tab becomes hidden while it is active, fall back to Projects.
   useEffect(() => {
     if (tab === "team" && !showTeamTab) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- tab visibility depends on workspace membership state
       setTab("projects");
     }
   }, [tab, showTeamTab]);

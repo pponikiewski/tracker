@@ -115,6 +115,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   useEffect(() => {
     const memberIds = workspaceMembers.map((m) => m.user_id);
     if (memberIds.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- marks profile fetch as complete for an empty member list
       setProfilesFetched(true);
       return;
     }
@@ -150,6 +151,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   // Tick the countdown every second while a code is active
   useEffect(() => {
     if (!activeCode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- countdown mirrors the active join-code state
       setMsLeft(0);
       return;
     }

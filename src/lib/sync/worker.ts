@@ -20,10 +20,12 @@ interface CollapseResult {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
+let pullTimer: ReturnType<typeof setInterval> | null = null;
 let visibilityHandler: (() => void) | null = null;
 // Mutex so concurrent tick() invocations don't race each other against the
 // single SQLite connection (which would yield "database is locked").
 let tickInFlight: Promise<void> | null = null;
+let pullInFlight: Promise<void> | null = null;
 
 export function collapseDuplicates(rows: ReadyRow[]): CollapseResult {
   const latest = new Map<string, ReadyRow>();
@@ -366,12 +368,40 @@ async function tickInternal(): Promise<void> {
   auth.setPendingCount(await countPending(db));
 }
 
+/**
+ * Pull cloud changes for the currently authenticated user. Serialised so
+ * concurrent calls don't stomp on each other.
+ */
+export async function pullNow(): Promise<void> {
+  const auth = useAuthStore.getState();
+  if (auth.state.kind !== 'authed') return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  const userId = auth.state.user.id;
+  if (pullInFlight) return pullInFlight;
+  pullInFlight = (async () => {
+    try {
+      // Lazy import avoids the worker → pull → worker import cycle.
+      const { runIncrementalPull } = await import('./pull');
+      await runIncrementalPull(userId);
+    } finally {
+      pullInFlight = null;
+    }
+  })();
+  return pullInFlight;
+}
+
 export function startWorker(): void {
   if (timer) return; // Req 15.3: idempotent
   timer = setInterval(() => { void tick(); }, 10_000);
+  // Pull cloud changes every 30 seconds so team members see each other's edits
+  // without restarting the app.
+  pullTimer = setInterval(() => { void pullNow(); }, 30_000);
   if (typeof document !== 'undefined') {
     visibilityHandler = () => {
-      if (document.visibilityState === 'visible') void tick();
+      if (document.visibilityState === 'visible') {
+        void tick();
+        void pullNow();
+      }
     };
     document.addEventListener('visibilitychange', visibilityHandler);
   }
@@ -379,6 +409,7 @@ export function startWorker(): void {
 
 export function stopWorker(): void {
   if (timer) { clearInterval(timer); timer = null; }
+  if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
   if (visibilityHandler && typeof document !== 'undefined') {
     document.removeEventListener('visibilitychange', visibilityHandler);
     visibilityHandler = null;

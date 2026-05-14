@@ -6,6 +6,11 @@ export interface MemberRow {
   projectBreakdown: Array<{ resourceId: string; resourceName: string; minutes: number }>;
 }
 
+export interface TeamReportProfile {
+  user_id: string;
+  display_name: string;
+}
+
 /**
  * Aggregates time event data per workspace member for the given date range.
  *
@@ -121,4 +126,78 @@ export async function computeMemberRows(
   rows.sort((a, b) => b.totalMinutes - a.totalMinutes);
 
   return rows;
+}
+
+function memberName(userId: string, profiles: TeamReportProfile[]): string {
+  return profiles.find((p) => p.user_id === userId)?.display_name ?? userId;
+}
+
+function formatHours(minutes: number): string {
+  return (minutes / 60).toFixed(2);
+}
+
+function escapeCsv(value: string): string {
+  const needsQuote = /[",\n\r]/.test(value);
+  const escaped = value.replace(/"/g, '""');
+  return needsQuote ? `"${escaped}"` : escaped;
+}
+
+export function teamRowsToCsv(
+  rows: MemberRow[],
+  profiles: TeamReportProfile[],
+): string {
+  const lines = ['member,project,minutes,hours'];
+
+  for (const row of rows) {
+    const name = memberName(row.userId, profiles);
+    if (row.projectBreakdown.length === 0) {
+      lines.push([name, '', '0', '0.00'].map(escapeCsv).join(','));
+      continue;
+    }
+
+    for (const project of row.projectBreakdown) {
+      lines.push(
+        [
+          name,
+          project.resourceName,
+          String(project.minutes),
+          formatHours(project.minutes),
+        ].map(escapeCsv).join(','),
+      );
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function teamRowsToMarkdown(
+  rows: MemberRow[],
+  profiles: TeamReportProfile[],
+  range: { from: string; to: string },
+): string {
+  const total = rows.reduce((sum, row) => sum + row.totalMinutes, 0);
+  const lines = [
+    `# Team report: ${range.from} to ${range.to}`,
+    '',
+    `Total: ${total} min (${formatHours(total)} h)`,
+    '',
+    '| Member | Project | Minutes | Hours |',
+    '| --- | --- | ---: | ---: |',
+  ];
+
+  for (const row of rows) {
+    const name = memberName(row.userId, profiles);
+    if (row.projectBreakdown.length === 0) {
+      lines.push(`| ${name} | - | 0 | 0.00 |`);
+      continue;
+    }
+
+    for (const project of row.projectBreakdown) {
+      lines.push(
+        `| ${name} | ${project.resourceName} | ${project.minutes} | ${formatHours(project.minutes)} |`,
+      );
+    }
+  }
+
+  return lines.join('\n');
 }

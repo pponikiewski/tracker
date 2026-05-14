@@ -408,6 +408,7 @@ export interface EventWithResource extends TimeEvent {
 export async function listEventsInRange(
   fromIso: string,
   toIso: string,
+  workspaceId: string,
 ): Promise<EventWithResource[]> {
   const db = await getDb();
   return db.select<EventWithResource[]>(
@@ -416,9 +417,10 @@ export async function listEventsInRange(
      JOIN resources r ON r.id = e.resource_id
      WHERE e.deleted_at IS NULL
        AND r.deleted_at IS NULL
-       AND e.date >= $1 AND e.date <= $2
+       AND e.workspace_id = $1
+       AND e.date >= $2 AND e.date <= $3
      ORDER BY e.date`,
-    [fromIso, toIso],
+    [workspaceId, fromIso, toIso],
   );
 }
 

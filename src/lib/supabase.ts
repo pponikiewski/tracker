@@ -10,7 +10,6 @@ if (!url || !key) {
       'and RESTART `pnpm dev` (Vite reads env vars only at startup).',
   );
 } else {
-  // eslint-disable-next-line no-console
   console.info('[supabase] client configured for', url);
 }
 

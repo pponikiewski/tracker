@@ -3,13 +3,13 @@ import { lwwMerge } from '../merge';
 import type { Resource, TimeEvent, Workspace, WorkspaceMembership } from '@/lib/db/types';
 
 const mkResource = (id: string, updated_at: number, name = id): Resource => ({
-  id, parent_id: null, name, type: 'project', color: null,
+  id, workspace_id: 'ws-1', parent_id: null, name, type: 'project', color: null,
   path: id, cached_minutes: 0,
   created_at: 1, updated_at, deleted_at: null,
 });
 
 const mkEvent = (id: string, updated_at: number, minutes = 60): TimeEvent => ({
-  id, resource_id: 'r1', date: '2026-01-01', minutes,
+  id, workspace_id: 'ws-1', resource_id: 'r1', date: '2026-01-01', minutes,
   goal: null, topics: null, notes: null, report: null, user_id: null,
   created_at: 1, updated_at, deleted_at: null,
 });

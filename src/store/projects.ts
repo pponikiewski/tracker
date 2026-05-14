@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/queries";
 import { buildTree } from "@/lib/utils/tree";
 import { useWorkspaceStore } from "@/store/workspace";
+import { useAuthStore } from "@/store/auth";
 
 interface ProjectsState {
   resources: Resource[];
@@ -113,7 +114,9 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   logTime: async (input) => {
     const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     if (!workspaceId) return;
-    await createEvent({ ...input, workspaceId });
+    const authState = useAuthStore.getState().state;
+    const userId = authState.kind === "authed" ? authState.user.id : null;
+    await createEvent({ ...input, workspaceId, userId });
     await get().refresh();
   },
 }));

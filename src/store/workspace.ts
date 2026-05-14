@@ -70,6 +70,17 @@ function getCurrentUserId(): string | null {
   return authState.kind === 'authed' ? authState.user.id : null;
 }
 
+export function replaceWorkspaceMemberships(
+  current: WorkspaceMembership[],
+  workspaceId: string,
+  nextForWorkspace: WorkspaceMembership[],
+): WorkspaceMembership[] {
+  return [
+    ...current.filter((m) => m.workspace_id !== workspaceId),
+    ...nextForWorkspace,
+  ];
+}
+
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   return {
     workspaces: [],
@@ -104,21 +115,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
           const workspaces = await workspaceQueries.listWorkspaces();
           set({ workspaces, memberships: [], activeWorkspaceId: localId, loading: false });
         } else {
-          // Authenticated mode.
-          // First, adopt any Local_Personal_Workspace that still sits in SQLite
-          // with owner_id = 'local'. After this the workspace becomes a
-          // regular cloud workspace owned by the current user, preserving all
-          // its projects and time events.
-          const locals = await workspaceQueries.listLocalWorkspaces();
-          for (const ws of locals) {
-            try {
-              await workspaceQueries.claimLocalWorkspace(ws.id, userId);
-            } catch (err) {
-              console.warn('[workspace] claimLocalWorkspace failed for', ws.id, err);
-            }
-          }
-
-          const workspaces = await workspaceQueries.listWorkspaces();
+          // Authenticated mode: do not auto-claim Local_Personal_Workspace
+          // before cloud pull. Team members would otherwise land in a new
+          // empty "My workspace" instead of their joined workspace.
+          const workspaces = (await workspaceQueries.listWorkspaces()).filter(
+            (w) => w.owner_id !== 'local',
+          );
           const memberships = await workspaceQueries.getUserMemberships(userId);
           set({ workspaces, memberships, loading: false });
           await get().restoreActiveWorkspace(userId);
@@ -203,6 +205,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       // Requirements: 4.2, 5.1, 6.9
       try {
         const memberships = await workspaceQueries.listMemberships(id);
+        set((state) => ({
+          memberships: replaceWorkspaceMemberships(state.memberships, id, memberships),
+        }));
         // Exclude pseudo user_ids used by Local_Personal_Workspace — Supabase
         // expects UUIDs and returns 400 Bad Request for the sentinel 'local'.
         const memberIds = memberships
@@ -248,14 +253,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
       // No workspaces at all — provision Personal_Workspace
       if (userId) {
-        const newId = crypto.randomUUID();
-        await workspaceQueries.createWorkspace({
-          id: newId,
-          name: 'My workspace',
-          ownerId: userId,
-        });
-        await get().refresh();
-        await get().setActiveWorkspace(newId);
+        // Authenticated cloud users are provisioned by initial pull, after
+        // Supabase has had a chance to return owned and joined workspaces.
+        // Creating here caused members of an existing team workspace to get a
+        // duplicate local/cloud "My workspace" during login.
+        set({ activeWorkspaceId: null });
       }
     },
 
@@ -323,15 +325,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         deleted_at: string | null;
       };
 
-      // Insert workspace row locally if not already present.
-      const existing = await workspaceQueries.getWorkspace(ws.id);
-      if (!existing) {
-        await workspaceQueries.createWorkspace({
-          id: ws.id,
-          name: ws.name,
-          ownerId: ws.owner_id,
-        });
-      }
+      await workspaceQueries.upsertWorkspaceLocal({
+        id: ws.id,
+        name: ws.name,
+        owner_id: ws.owner_id,
+        created_at: Date.parse(ws.created_at),
+        updated_at: Date.parse(ws.updated_at),
+        deleted_at: ws.deleted_at ? Date.parse(ws.deleted_at) : null,
+      });
 
       // Insert local membership for the newly joined user.
       await workspaceQueries.insertMembership({
@@ -343,6 +344,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
       await get().refresh();
       await get().setActiveWorkspace(workspaceId);
+      const { pullNow } = await import('@/lib/sync/worker');
+      await pullNow();
+      await get().refresh();
+      await get().setActiveWorkspace(workspaceId);
       return workspaceId;
     },
 
@@ -350,10 +355,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
     refresh: async () => {
       const userId = getCurrentUserId();
-      const workspaces = await workspaceQueries.listWorkspaces();
-      const memberships = userId
-        ? await workspaceQueries.getUserMemberships(userId)
-        : [];
+      const allWorkspaces = await workspaceQueries.listWorkspaces();
+      const workspaces = userId
+        ? allWorkspaces.filter((w) => w.owner_id !== 'local')
+        : allWorkspaces;
+      const activeWorkspaceId = get().activeWorkspaceId;
+      const memberships = activeWorkspaceId
+        ? await workspaceQueries.listMemberships(activeWorkspaceId)
+        : userId
+          ? await workspaceQueries.getUserMemberships(userId)
+          : [];
       set({ workspaces, memberships });
     },
   };

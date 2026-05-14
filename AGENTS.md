@@ -1,8 +1,8 @@
-# tracker — Claude Code Project Guide
+# tracker — Codex Project Guide
 
 Multi-tenant desktop time tracker. Tauri 2 + React 19 + TypeScript + Vite 7 + Tailwind v4 + Supabase (planned).
 
-Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna-i-logiczna-jiggly-nebula.md`
+Pełna specyfikacja: `C:\Users\sitka\.Codex\plans\specyfikacja-architektoniczna-i-logiczna-jiggly-nebula.md`
 
 ---
 
@@ -192,7 +192,7 @@ Conventional Commits. Scope = faza lub moduł:
 - `chore(scope): ...`
 - `refactor(scope): ...`
 
-Każda faza = jeden commit + update tego pliku (CLAUDE.md).
+Każda faza = jeden commit + update tego pliku (AGENTS.md).
 
 ---
 
@@ -265,4 +265,4 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 8. Offline-first hardening — backup/export/restore, sync audit, testy awarii
 9. Build + release — installer, auto-updater, CI
 
-Po każdej fazie: green build, commit, update CLAUDE.md.
+Po każdej fazie: green build, commit, update AGENTS.md.

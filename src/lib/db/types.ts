@@ -3,6 +3,7 @@ export type ResourceType = (typeof RESOURCE_TYPES)[number];
 
 export interface Resource {
   id: string;
+  workspace_id: string;
   parent_id: string | null;
   name: string;
   type: ResourceType;
@@ -16,6 +17,7 @@ export interface Resource {
 
 export interface TimeEvent {
   id: string;
+  workspace_id: string;
   resource_id: string;
   date: string;
   minutes: number;

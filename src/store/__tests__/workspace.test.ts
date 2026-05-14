@@ -1,7 +1,7 @@
 // Feature: multi-tenant-schema, Property 4: Walidacja nazwy workspace
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { validateWorkspaceName } from '../workspace';
+import { replaceWorkspaceMemberships, validateWorkspaceName } from '../workspace';
 
 /**
  * Property 4: Walidacja nazwy workspace
@@ -81,5 +81,27 @@ describe('Property 4: Walidacja nazwy workspace', () => {
 
   it('akceptuje nazwę z wiodącymi/końcowymi spacjami, jeśli trim ma 1–80 znaków', () => {
     expect(() => validateWorkspaceName('  My workspace  ')).not.toThrow();
+  });
+});
+
+describe('replaceWorkspaceMemberships', () => {
+  it('replaces only memberships for the active workspace', () => {
+    const result = replaceWorkspaceMemberships(
+      [
+        { workspace_id: 'ws-1', user_id: 'old', role: 'member', joined_at: 1 },
+        { workspace_id: 'ws-2', user_id: 'keep', role: 'owner', joined_at: 2 },
+      ],
+      'ws-1',
+      [
+        { workspace_id: 'ws-1', user_id: 'owner', role: 'owner', joined_at: 3 },
+        { workspace_id: 'ws-1', user_id: 'member', role: 'member', joined_at: 4 },
+      ],
+    );
+
+    expect(result).toEqual([
+      { workspace_id: 'ws-2', user_id: 'keep', role: 'owner', joined_at: 2 },
+      { workspace_id: 'ws-1', user_id: 'owner', role: 'owner', joined_at: 3 },
+      { workspace_id: 'ws-1', user_id: 'member', role: 'member', joined_at: 4 },
+    ]);
   });
 });

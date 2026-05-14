@@ -36,6 +36,7 @@ export function ProfileSettingsPanel({ onClose }: ProfileSettingsPanelProps) {
   // Keep display name field in sync when profile loads/changes
   useEffect(() => {
     if (profile?.display_name) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initialize editable draft from cached profile
       setDisplayName(profile.display_name);
     }
   }, [profile?.display_name]);

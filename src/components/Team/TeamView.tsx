@@ -1,11 +1,18 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useProfileStore } from '@/store/profile';
-import { computeMemberRows, type MemberRow } from '@/lib/analytics/teamAnalytics';
+import {
+  computeMemberRows,
+  teamRowsToCsv,
+  teamRowsToMarkdown,
+  type MemberRow,
+  type TeamReportProfile,
+} from '@/lib/analytics/teamAnalytics';
 import { AvatarBadge } from '@/components/Profile/AvatarBadge';
 import { formatMinutes } from '@/lib/utils/time';
 import { todayIso } from '@/lib/utils/time';
 import { daysAgoIso } from '@/lib/analytics/aggregate';
+import { downloadCsv, downloadText } from '@/lib/utils/csv';
 
 // ---- Date range presets ----
 
@@ -105,6 +112,7 @@ export function TeamView() {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const memberships = useWorkspaceStore((s) => s.memberships);
   const fetchProfiles = useProfileStore((s) => s.fetchProfiles);
+  const getProfile = useProfileStore((s) => s.getProfile);
 
   // ---- Date range state ----
   const [preset, setPreset] = useState<Preset>('week');
@@ -149,6 +157,7 @@ export function TeamView() {
 
   // Reload when workspace changes or date range changes (Requirements 6.4, 6.9)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadRows owns async loading state for this view
     void loadRows();
   }, [loadRows]);
 
@@ -162,6 +171,34 @@ export function TeamView() {
       void fetchProfiles(memberIds);
     }
   }, [activeWorkspaceId, memberships, fetchProfiles]);
+
+  const reportProfiles: TeamReportProfile[] = useMemo(
+    () =>
+      rows.map((row) => {
+        const profile = getProfile(row.userId);
+        return {
+          user_id: row.userId,
+          display_name: profile.display_name,
+        };
+      }),
+    [rows, getProfile],
+  );
+
+  const exportCsv = () => {
+    if (rows.length === 0) return;
+    downloadCsv(
+      `tracker-team-${dateRange.from}_to_${dateRange.to}.csv`,
+      teamRowsToCsv(rows, reportProfiles),
+    );
+  };
+
+  const exportMarkdown = () => {
+    if (rows.length === 0) return;
+    downloadText(
+      `tracker-team-${dateRange.from}_to_${dateRange.to}.md`,
+      teamRowsToMarkdown(rows, reportProfiles, dateRange),
+    );
+  };
 
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
@@ -216,6 +253,25 @@ export function TeamView() {
               />
             </>
           )}
+
+          <div className="ml-auto flex gap-1">
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={rows.length === 0}
+              className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
+            >
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={exportMarkdown}
+              disabled={rows.length === 0}
+              className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
+            >
+              Markdown
+            </button>
+          </div>
         </div>
       </header>
 

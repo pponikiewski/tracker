@@ -159,6 +159,7 @@ export function ProjectsView() {
 
   // Reset filter when workspace changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- assignment filter is scoped to the active workspace
     setAssignmentFilter("all");
   }, [activeWorkspaceId]);
 
@@ -531,7 +532,7 @@ export function ProjectsView() {
       </main>
 
       <footer className="border-t border-neutral-800 px-4 py-1.5 text-[10px] text-neutral-500">
-        Faza 3 · Polish UX
+        Faza 6 · Team visibility
       </footer>
 
       {menu && (

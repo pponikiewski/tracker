@@ -39,6 +39,28 @@ export async function getUserMemberships(userId: string): Promise<WorkspaceMembe
   );
 }
 
+export async function upsertWorkspaceLocal(workspace: Workspace): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO workspaces (id, name, owner_id, created_at, updated_at, deleted_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT(id) DO UPDATE SET
+       name=excluded.name,
+       owner_id=excluded.owner_id,
+       created_at=excluded.created_at,
+       updated_at=excluded.updated_at,
+       deleted_at=excluded.deleted_at`,
+    [
+      workspace.id,
+      workspace.name,
+      workspace.owner_id,
+      workspace.created_at,
+      workspace.updated_at,
+      workspace.deleted_at,
+    ],
+  );
+}
+
 // ---- Mutations (each in a single transaction) ----
 
 /**
