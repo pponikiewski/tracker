@@ -4,6 +4,7 @@ import { LoginPage } from "@/components/Auth/LoginPage";
 import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { ProjectsView } from "./components/ProjectsView";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
+import { WorkspaceEmptyState } from "@/components/Workspace/WorkspaceEmptyState";
 import { useAuthStore } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
 
@@ -23,6 +24,8 @@ function App() {
 
   // All hooks must be called unconditionally before any early returns.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const workspaceLoading = useWorkspaceStore((s) => s.loading);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const memberships = useWorkspaceStore((s) => s.memberships);
   const activeMemberCount = memberships.filter(
     (m) => m.workspace_id === activeWorkspaceId,
@@ -69,6 +72,11 @@ function App() {
   // Show login page when not authenticated.
   if (authState.kind === "anonymous") {
     return <LoginPage />;
+  }
+
+  const visibleWorkspaces = workspaces.filter((w) => w.deleted_at === null);
+  if (!workspaceLoading && visibleWorkspaces.length === 0 && activeWorkspaceId === null) {
+    return <WorkspaceEmptyState />;
   }
 
   return (

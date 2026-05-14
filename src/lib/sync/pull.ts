@@ -106,18 +106,12 @@ function resourceDepth(resource: Resource): number {
 }
 
 /**
- * Ensures a Personal_Workspace exists in Supabase for the given user.
- * If the user can already see any workspace (owner or member), returns it.
- * If none exists, creates one (with owner membership) and returns the new id.
- * Throws on creation failure — caller should set error status.
- * Requirements: 2.1, 2.6
+ * Returns an existing workspace visible to the user, if any.
+ * New workspaces are created only from explicit UI actions.
  */
-export async function ensurePersonalWorkspace(userId: string): Promise<string> {
+export async function findAccessibleWorkspace(): Promise<string | null> {
   if (!supabase) throw new Error('Supabase not configured');
 
-  // Check if the user already has access to any workspace. RLS limits this to
-  // owned or joined workspaces, so members must not get a duplicate personal
-  // workspace just because owner_id !== userId.
   const { data: accessible, error: accessibleErr } = await supabase
     .from('workspaces')
     .select('id')
@@ -131,30 +125,7 @@ export async function ensurePersonalWorkspace(userId: string): Promise<string> {
     return accessible[0].id as string;
   }
 
-  // No workspace found — create Personal_Workspace
-  const newId = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  const { error: wsErr } = await supabase.from('workspaces').insert({
-    id: newId,
-    name: 'My workspace',
-    owner_id: userId,
-    created_at: now,
-    updated_at: now,
-  });
-
-  if (wsErr) throw new Error(wsErr.message);
-
-  const { error: memErr } = await supabase.from('workspace_memberships').insert({
-    workspace_id: newId,
-    user_id: userId,
-    role: 'owner',
-    joined_at: now,
-  });
-
-  if (memErr) throw new Error(memErr.message);
-
-  return newId;
+  return null;
 }
 
 // Req 8.7: rebuild materialized paths from parent_id chains
@@ -237,14 +208,15 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
   const auth = useAuthStore.getState();
   auth.setSyncStatus({ kind: isInitial ? 'initial-pull' : 'syncing' });
 
-  // Step 1: Ensure Personal_Workspace exists in Supabase (Req 2.1, 2.6)
+  // Step 1: Check whether the user already has a workspace. Do not create one
+  // implicitly; new accounts should see the explicit create/join screen.
   if (isInitial) {
     try {
-      await ensurePersonalWorkspace(userId);
+      await findAccessibleWorkspace();
     } catch (e) {
       auth.setSyncStatus({
         kind: 'error',
-        message: e instanceof Error ? e.message : 'failed to provision workspace',
+        message: e instanceof Error ? e.message : 'failed to check workspaces',
       });
       return;
     }

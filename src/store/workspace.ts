@@ -175,17 +175,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         if (available.length > 0) {
           await get().setActiveWorkspace(available[0]!.id);
         } else {
-          // No workspaces left — provision a new Personal_Workspace
-          const userId = getCurrentUserId();
-          if (!userId) throw new Error('Cannot provision workspace: no authenticated user.');
-          const newId = crypto.randomUUID();
-          await workspaceQueries.createWorkspace({
-            id: newId,
-            name: 'My workspace',
-            ownerId: userId,
-          });
-          await get().refresh();
-          await get().setActiveWorkspace(newId);
+          set({ activeWorkspaceId: null });
         }
       }
     },
@@ -251,7 +241,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         return;
       }
 
-      // No workspaces at all — provision Personal_Workspace
+      // No workspaces at all — show the explicit create/join empty state.
       if (userId) {
         // Authenticated cloud users are provisioned by initial pull, after
         // Supabase has had a chance to return owned and joined workspaces.
