@@ -26,7 +26,7 @@ interface ProjectsState {
   loading: boolean;
   error: string | null;
 
-  refresh: () => Promise<void>;
+  refresh: (options?: { showLoading?: boolean }) => Promise<void>;
   toggleExpanded: (id: string) => void;
 
   addProject: (name: string) => Promise<void>;
@@ -49,18 +49,22 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   loading: false,
   error: null,
 
-  refresh: async () => {
+  refresh: async (options) => {
+    const showLoading = options?.showLoading ?? true;
     const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     if (activeWorkspaceId === null) {
       set({ resources: [], tree: [], loading: false, error: null });
       return;
     }
-    set({ loading: true, error: null });
+    set((state) => ({ loading: showLoading ? true : state.loading, error: null }));
     try {
       const resources = await listActiveResources(activeWorkspaceId);
       set({ resources, tree: buildTree(resources), loading: false });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e), loading: false });
+      set((state) => ({
+        error: e instanceof Error ? e.message : String(e),
+        loading: showLoading ? false : state.loading,
+      }));
     }
   },
 

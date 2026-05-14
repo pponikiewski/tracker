@@ -393,9 +393,11 @@ export async function pullNow(): Promise<void> {
 export function startWorker(): void {
   if (timer) return; // Req 15.3: idempotent
   timer = setInterval(() => { void tick(); }, 10_000);
-  // Pull cloud changes every 30 seconds so team members see each other's edits
-  // without restarting the app.
-  pullTimer = setInterval(() => { void pullNow(); }, 30_000);
+  // Faza 7: Supabase Realtime delivers cloud changes near-instantly. This poll
+  // stays only as a fallback for dropped websockets, hence the slow interval.
+  pullTimer = setInterval(() => { void pullNow(); }, 120_000);
+  // Lazy import avoids the worker <-> realtime import cycle.
+  void import('./realtime').then(({ startRealtime }) => startRealtime());
   if (typeof document !== 'undefined') {
     visibilityHandler = () => {
       if (document.visibilityState === 'visible') {
@@ -410,6 +412,7 @@ export function startWorker(): void {
 export function stopWorker(): void {
   if (timer) { clearInterval(timer); timer = null; }
   if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
+  void import('./realtime').then(({ stopRealtime }) => stopRealtime());
   if (visibilityHandler && typeof document !== 'undefined') {
     document.removeEventListener('visibilitychange', visibilityHandler);
     visibilityHandler = null;

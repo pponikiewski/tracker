@@ -30,6 +30,7 @@ function App() {
   const memberships = useWorkspaceStore((s) => s.memberships);
   const activeMemberCount = memberships.filter((m) => m.workspace_id === activeWorkspaceId).length;
   const showTeamTab = activeMemberCount > 1;
+  const showTeamNavItem = showTeamTab || tab === "team";
 
   useEffect(() => {
     if (authState.kind !== "authed") {
@@ -41,14 +42,6 @@ function App() {
       setHasResolvedInitialWorkspaceState(true);
     }
   }, [authState.kind, workspaceLoading]);
-
-  // If the Team tab becomes hidden while it is active, fall back to Projects.
-  useEffect(() => {
-    if (tab === "team" && !showTeamTab) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- tab visibility depends on workspace membership state
-      setTab("projects");
-    }
-  }, [tab, showTeamTab]);
 
   // Global keyboard shortcuts.
   useEffect(() => {
@@ -64,14 +57,14 @@ function App() {
       } else if (e.key === "3") {
         e.preventDefault();
         setTab("history");
-      } else if (e.key === "4" && showTeamTab) {
+      } else if (e.key === "4" && showTeamNavItem) {
         e.preventDefault();
         setTab("team");
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showTeamTab]);
+  }, [showTeamNavItem]);
 
   // Show full-screen spinner while Supabase session is being resolved.
   if (authState.kind === "loading") {
@@ -98,7 +91,7 @@ function App() {
 
   return (
     <div className="flex h-full bg-neutral-950 text-neutral-100">
-      <Sidebar tab={tab} onTabChange={setTab} showTeamTab={showTeamTab} />
+      <Sidebar tab={tab} onTabChange={setTab} showTeamTab={showTeamNavItem} />
       <div className="flex-1 overflow-hidden">
         {tab === "projects" ? (
           <ProjectsView />

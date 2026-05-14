@@ -206,7 +206,9 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
   if (!supabase) return;
 
   const auth = useAuthStore.getState();
-  auth.setSyncStatus({ kind: isInitial ? 'initial-pull' : 'syncing' });
+  if (isInitial) {
+    auth.setSyncStatus({ kind: 'initial-pull' });
+  }
 
   // Step 1: Check whether the user already has a workspace. Do not create one
   // implicitly; new accounts should see the explicit create/join screen.
@@ -402,6 +404,12 @@ function isMissingTable(err: SbError): boolean {
   const aMerge = assignmentsMissing
     ? { writeSqlite: [] as Assignment[], pushOutbox: [] as Assignment[] }
     : lwwMerge(localA, cloudAloc);
+  const hasPulledUiChanges =
+    wsMerge.writeSqlite.length > 0 ||
+    memMerge.writeSqlite.length > 0 ||
+    rMerge.writeSqlite.length > 0 ||
+    eMerge.writeSqlite.length > 0 ||
+    aMerge.writeSqlite.length > 0;
 
   try {
     const resourcesToWrite = [...rMerge.writeSqlite].sort(
@@ -519,20 +527,23 @@ function isMissingTable(err: SbError): boolean {
   auth.setSyncStatus({ kind: 'idle' });
   auth.setLastSyncAt(Date.now());
 
-  // Reload UI — lazy import avoids circular dep
-  const { useWorkspaceStore } = await import('@/store/workspace');
-  const { useProjects } = await import('@/store/projects');
-  await useWorkspaceStore.getState().refresh();
-  const workspaceState = useWorkspaceStore.getState();
-  const activeWorkspaceStillExists =
-    workspaceState.activeWorkspaceId !== null &&
-    workspaceState.workspaces.some(
-      (w) => w.id === workspaceState.activeWorkspaceId && w.deleted_at === null,
-    );
-  if (!activeWorkspaceStillExists) {
-    await workspaceState.restoreActiveWorkspace(userId);
+  if (isInitial || hasPulledUiChanges) {
+    // Reload UI only after real local changes. Incremental pulls with no new
+    // cloud data should be invisible to the user.
+    const { useWorkspaceStore } = await import('@/store/workspace');
+    const { useProjects } = await import('@/store/projects');
+    await useWorkspaceStore.getState().refresh();
+    const workspaceState = useWorkspaceStore.getState();
+    const activeWorkspaceStillExists =
+      workspaceState.activeWorkspaceId !== null &&
+      workspaceState.workspaces.some(
+        (w) => w.id === workspaceState.activeWorkspaceId && w.deleted_at === null,
+      );
+    if (!activeWorkspaceStillExists) {
+      await workspaceState.restoreActiveWorkspace(userId);
+    }
+    await useProjects.getState().refresh({ showLoading: false });
   }
-  await useProjects.getState().refresh();
 
   // Drain newly enqueued local-wins
   void tick();

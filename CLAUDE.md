@@ -8,7 +8,20 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 
 ## Current phase
 
-**Faza 6 — Minimum Team Visibility (DONE).** Projekt jest teraz prostym trackerem dla Ciebie i małego zespołu: wspólny workspace, eventy przypisane do autora, widok czasu per osoba, podstawowy Team report i stabilny sync bez pełnego SaaS/realtime.
+**Faza 7 — Realtime sync (DONE).** Zmiany w chmurze (od innych członków zespołu) docierają niemal natychmiast przez Supabase Realtime, zamiast czekać na 30-sekundowy polling.
+
+Kluczowe zmiany Fazy 7:
+
+- **Realtime channel**: `src/lib/sync/realtime.ts` — jeden per-user kanał `tracker-sync` subskrybuje `postgres_changes` na wszystkich syncowanych tabelach (resources, events, workspaces, workspace_memberships, assignments, profiles)
+- **Debounced pull**: każda zmiana z chmury → debounce 400ms → `runIncrementalPull` (reuse istniejącego LWW merge + rebuild path + recalc cached_minutes; idempotentny, więc burst zmian = jeden pull)
+- **Bez per-row apply**: świadomie nie aplikujemy payloadów wierszy bezpośrednio — ponowny incremental pull jest prostszy i bezpieczniejszy
+- **Polling jako fallback**: `pullTimer` w `worker.ts` zwolniony z 30s → 120s, zostaje tylko jako zabezpieczenie na zerwany websocket
+- **Lifecycle**: `startWorker`/`stopWorker` startują/zatrzymują realtime (lazy import — cykl worker ↔ realtime)
+- **Konflikty**: bez zmian — last-write-wins z `merge.ts`, soft-delete preferowany
+- **Supabase migration**: `supabase/migrations/20260701000001_realtime.sql` — `REPLICA IDENTITY FULL` + dodanie tabel do publikacji `supabase_realtime` (idempotentne); RLS nadal filtruje payloady realtime per workspace
+- **Odłożone**: presence ("X is editing") — wymaga osobnej pracy UI, nie blokuje continuous sync
+
+Poprzednia Faza 6 — Minimum Team Visibility (DONE). Projekt jest prostym trackerem dla Ciebie i małego zespołu: wspólny workspace, eventy przypisane do autora, widok czasu per osoba, podstawowy Team report.
 
 Kluczowe zmiany Fazy 6:
 
@@ -40,7 +53,7 @@ Poprzednia Faza 5 — Multi-Tenant Schema (DONE). Model multi-tenant oparty na W
 - **Postgres migration**: `supabase/migrations/20260601000001_multi_tenant_schema.sql` — ltree extension, workspaces, workspace_memberships, backfill, workspace_id w resources/events, invites, RLS
 - **Testy PBT**: 8 nowych właściwości (Properties 1–4, 9, 10, 13) — ltree round-trip, pathToLtree correctness, error rejection, workspace name validation, LWW merge dla workspace'ów, timestamp conversion, outbox collapse
 
-**Next: Faza 7 — Realtime + presence** jest świadomie odłożona. Najpierw priorytetem jest używanie przez mały zespół, backup/export i stabilność sync.
+**Next: Faza 8 — Offline-first hardening** — backup/export/restore, sync audit, testy awarii. Presence ("X is editing") z Fazy 7 odłożone do osobnej pracy UI.
 
 ---
 
@@ -163,12 +176,12 @@ Aktualne (Fazy 1-5):
 - `src/lib/analytics/aggregate.ts`
 - `src/lib/utils/csv.ts`
 - `src/lib/hooks/useEventsRange.ts`
-- `src/lib/sync/` — `merge.ts`, `outbox.ts`, `worker.ts` (workspace entities), `pull.ts` (ensurePersonalWorkspace), `types.ts`
+- `src/lib/sync/` — `merge.ts`, `outbox.ts`, `worker.ts` (workspace entities, realtime lifecycle), `pull.ts` (ensurePersonalWorkspace), `realtime.ts` (Supabase Realtime channel), `types.ts`
 - `src/lib/supabase.ts`
 - `src/store/projects.ts` — workspace-scoped queries
 - `src/store/auth.ts`
 - `src/store/workspace.ts` — WorkspaceStore (Zustand)
-- `supabase/migrations/` — `20260512000001_init.sql` (Faza 4), `20260601000001_multi_tenant_schema.sql` (Faza 5), `20260615000001_team_features.sql` (Faza 6)
+- `supabase/migrations/` — `20260512000001_init.sql` (Faza 4), `20260601000001_multi_tenant_schema.sql` (Faza 5), `20260615000001_team_features.sql` (Faza 6), `20260701000001_realtime.sql` (Faza 7)
 - `src/test/setup.ts` + `vitest.config.ts`
 
 Plan future folders (kolejne fazy):
@@ -265,7 +278,7 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 4. **Supabase Auth + single-user cloud sync** ✓ — outbox + LWW merge + RLS + Vitest PBT
 5. **Multi-tenant schema** ✓ — workspaces, ltree, RLS na workspace_id, invites, WorkspaceStore, UI
 6. **Minimum Team Visibility** ✓ — profiles, event author, TeamView, team report CSV/Markdown, assignments pomocnicze
-7. Realtime + presence — odłożone do czasu realnego bólu zespołu
+7. **Realtime sync** ✓ — Supabase Realtime per-user channel → debounced incremental pull; presence odłożone
 8. Offline-first hardening — backup/export/restore, sync audit, testy awarii
 9. Build + release — installer, auto-updater, CI
 
