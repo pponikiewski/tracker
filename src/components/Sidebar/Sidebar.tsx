@@ -1,6 +1,7 @@
 import { BarChart3, FolderTree, History, Users } from "lucide-react";
 import { AuthGate } from "@/components/Auth/AuthGate";
 import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
+import { PresenceBar } from "@/components/Presence/PresenceBar";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
 
 export type Tab = "projects" | "dashboard" | "history" | "team";
@@ -65,6 +66,7 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
       </nav>
 
       <div className="mt-auto flex flex-col gap-2 border-t border-neutral-800 pt-3">
+        <PresenceBar />
         <SyncStatusBadge />
         <AuthGate />
       </div>

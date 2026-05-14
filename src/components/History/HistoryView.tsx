@@ -5,6 +5,7 @@ import { daysAgoIso } from "@/lib/analytics/aggregate";
 import { listEventsForHistory, type EventWithResource } from "@/lib/db/queries";
 import { formatMinutes, todayIso } from "@/lib/utils/time";
 import { formatTimestamp, groupEventsByDate } from "@/lib/utils/history";
+import { usePresenceStore } from "@/store/presence";
 import { useProfileStore } from "@/store/profile";
 import { useProjects } from "@/store/projects";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -87,6 +88,14 @@ export function HistoryView() {
       cancelled = true;
     };
   }, [activeWorkspaceId, fromIso, personFilter, reloadKey, toIso]);
+
+  // Faza 7 presence: broadcast the resource of the event being edited so
+  // teammates see an "is editing" badge on that node in the tree.
+  const setPresenceEditing = usePresenceStore((s) => s.setEditing);
+  useEffect(() => {
+    setPresenceEditing(editing?.resource_id ?? null);
+  }, [editing, setPresenceEditing]);
+  useEffect(() => () => setPresenceEditing(null), [setPresenceEditing]);
 
   const groups = useMemo(() => groupEventsByDate(events, todayIso()), [events]);
   const totalMinutes = useMemo(

@@ -5,6 +5,7 @@ import { WorkspaceEmptyState } from "@/components/Workspace/WorkspaceEmptyState"
 import { ProjectsView } from "./components/ProjectsView";
 import { useAuthStore } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
+import { usePresenceStore } from "@/store/presence";
 
 const DashboardView = lazy(() =>
   import("./components/Dashboard/DashboardView").then((m) => ({ default: m.DashboardView })),
@@ -42,6 +43,17 @@ function App() {
       setHasResolvedInitialWorkspaceState(true);
     }
   }, [authState.kind, workspaceLoading]);
+
+  // Faza 7: open/close the per-workspace presence channel as the active
+  // workspace (or auth state) changes.
+  useEffect(() => {
+    if (authState.kind !== "authed" || !activeWorkspaceId) {
+      usePresenceStore.getState().stop();
+      return;
+    }
+    usePresenceStore.getState().start(activeWorkspaceId);
+    return () => usePresenceStore.getState().stop();
+  }, [authState.kind, activeWorkspaceId]);
 
   // Global keyboard shortcuts.
   useEffect(() => {

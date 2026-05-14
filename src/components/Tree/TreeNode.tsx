@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { Pencil } from "lucide-react";
 import type { ResourceNode } from "@/lib/db/types";
 import { formatMinutes } from "@/lib/utils/time";
 import { AvatarBadge } from "@/components/Profile/AvatarBadge";
 import { useAssignmentStore } from "@/store/assignments";
+import { useAuthStore } from "@/store/auth";
+import { usePresenceStore } from "@/store/presence";
 import { useProfileStore } from "@/store/profile";
 
 interface TreeCallbacks {
@@ -59,6 +62,14 @@ export function TreeNode(props: Props) {
   const assigneeIds = getAssignees(node.id);
   const visibleAssignees = assigneeIds.slice(0, MAX_VISIBLE_ASSIGNEES);
   const overflowCount = assigneeIds.length - visibleAssignees.length;
+
+  // Faza 7 presence: other members currently editing this node.
+  const presenceMembers = usePresenceStore((s) => s.members);
+  const authState = useAuthStore((s) => s.state);
+  const selfId = authState.kind === "authed" ? authState.user.id : null;
+  const editors = presenceMembers.filter(
+    (m) => m.editingResourceId === node.id && m.userId !== selfId,
+  );
 
   return (
     <>
@@ -123,6 +134,24 @@ export function TreeNode(props: Props) {
           />
         ) : (
           <span className="flex-1 truncate text-neutral-100">{node.name}</span>
+        )}
+
+        {!renaming && editors.length > 0 && (
+          <span
+            className="ml-2 flex shrink-0 items-center gap-0.5"
+            title={`Edytuje: ${editors.map((e) => e.displayName).join(", ")}`}
+          >
+            <Pencil size={11} className="text-amber-400" aria-hidden="true" />
+            {editors.slice(0, 2).map((e) => (
+              <AvatarBadge
+                key={e.userId}
+                userId={e.userId}
+                displayName={e.displayName}
+                avatarUrl={e.avatarUrl}
+                size="xs"
+              />
+            ))}
+          </span>
         )}
 
         {!renaming && node.cached_minutes > 0 && (

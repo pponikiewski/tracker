@@ -4,6 +4,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { useAssignmentStore } from "@/store/assignments";
 import { useProfileStore } from "@/store/profile";
 import { useAuthStore } from "@/store/auth";
+import { usePresenceStore } from "@/store/presence";
 import { TreeView } from "./Tree/TreeView";
 import { ContextMenu, type MenuEntry, type AssignMenuItem } from "./ContextMenu";
 import { PromptModal } from "./PromptModal";
@@ -226,6 +227,14 @@ export function ProjectsView() {
   useEffect(() => {
     void refresh();
   }, [refresh, activeWorkspaceId]);
+
+  // Faza 7 presence: broadcast which resource the user is editing (log modal
+  // or inline rename) so teammates see an "is editing" badge on the node.
+  const setPresenceEditing = usePresenceStore((s) => s.setEditing);
+  useEffect(() => {
+    setPresenceEditing(logWorkResource?.id ?? renamingId ?? null);
+  }, [logWorkResource, renamingId, setPresenceEditing]);
+  useEffect(() => () => setPresenceEditing(null), [setPresenceEditing]);
 
   // Block native context menu globally on this view.
   useEffect(() => {

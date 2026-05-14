@@ -8,7 +8,7 @@ Pełna specyfikacja: `C:\Users\sitka\.claude\plans\specyfikacja-architektoniczna
 
 ## Current phase
 
-**Faza 7 — Realtime sync (DONE).** Zmiany w chmurze (od innych członków zespołu) docierają niemal natychmiast przez Supabase Realtime, zamiast czekać na 30-sekundowy polling.
+**Faza 7 — Realtime + presence (DONE).** Zmiany w chmurze (od innych członków zespołu) docierają niemal natychmiast przez Supabase Realtime, zamiast czekać na 30-sekundowy polling. Dodatkowo presence pokazuje kto jest online i co edytuje.
 
 Kluczowe zmiany Fazy 7:
 
@@ -19,7 +19,8 @@ Kluczowe zmiany Fazy 7:
 - **Lifecycle**: `startWorker`/`stopWorker` startują/zatrzymują realtime (lazy import — cykl worker ↔ realtime)
 - **Konflikty**: bez zmian — last-write-wins z `merge.ts`, soft-delete preferowany
 - **Supabase migration**: `supabase/migrations/20260701000001_realtime.sql` — `REPLICA IDENTITY FULL` + dodanie tabel do publikacji `supabase_realtime` (idempotentne); RLS nadal filtruje payloady realtime per workspace
-- **Odłożone**: presence ("X is editing") — wymaga osobnej pracy UI, nie blokuje continuous sync
+- **Presence ("X is editing")**: `src/store/presence.ts` — per-workspace kanał presence `presence:<workspaceId>`; `start`/`stop` sterowane efektem w `App.tsx` (restart przy zmianie workspace'u); `setEditing(resourceId)` broadcastuje co user edytuje
+- **Presence UI**: `PresenceBar` w sidebarze (avatary online członków + zielona kropka); `TreeNode` pokazuje badge ✏ + avatar gdy ktoś inny edytuje węzeł; `ProjectsView` (log modal / inline rename) i `HistoryView` (edycja wpisu) wołają `setEditing`
 
 Poprzednia Faza 6 — Minimum Team Visibility (DONE). Projekt jest prostym trackerem dla Ciebie i małego zespołu: wspólny workspace, eventy przypisane do autora, widok czasu per osoba, podstawowy Team report.
 
@@ -53,7 +54,7 @@ Poprzednia Faza 5 — Multi-Tenant Schema (DONE). Model multi-tenant oparty na W
 - **Postgres migration**: `supabase/migrations/20260601000001_multi_tenant_schema.sql` — ltree extension, workspaces, workspace_memberships, backfill, workspace_id w resources/events, invites, RLS
 - **Testy PBT**: 8 nowych właściwości (Properties 1–4, 9, 10, 13) — ltree round-trip, pathToLtree correctness, error rejection, workspace name validation, LWW merge dla workspace'ów, timestamp conversion, outbox collapse
 
-**Next: Faza 8 — Offline-first hardening** — backup/export/restore, sync audit, testy awarii. Presence ("X is editing") z Fazy 7 odłożone do osobnej pracy UI.
+**Next: Faza 8 — Offline-first hardening** — backup/export/restore, sync audit, testy awarii.
 
 ---
 
@@ -181,6 +182,8 @@ Aktualne (Fazy 1-5):
 - `src/store/projects.ts` — workspace-scoped queries
 - `src/store/auth.ts`
 - `src/store/workspace.ts` — WorkspaceStore (Zustand)
+- `src/store/presence.ts` — PresenceStore (Zustand) — per-workspace Realtime presence ("X is editing")
+- `src/components/Presence/` — `PresenceBar` (online członkowie w sidebarze)
 - `supabase/migrations/` — `20260512000001_init.sql` (Faza 4), `20260601000001_multi_tenant_schema.sql` (Faza 5), `20260615000001_team_features.sql` (Faza 6), `20260701000001_realtime.sql` (Faza 7)
 - `src/test/setup.ts` + `vitest.config.ts`
 
@@ -278,7 +281,7 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 4. **Supabase Auth + single-user cloud sync** ✓ — outbox + LWW merge + RLS + Vitest PBT
 5. **Multi-tenant schema** ✓ — workspaces, ltree, RLS na workspace_id, invites, WorkspaceStore, UI
 6. **Minimum Team Visibility** ✓ — profiles, event author, TeamView, team report CSV/Markdown, assignments pomocnicze
-7. **Realtime sync** ✓ — Supabase Realtime per-user channel → debounced incremental pull; presence odłożone
+7. **Realtime + presence** ✓ — Supabase Realtime per-user channel → debounced incremental pull; per-workspace presence channel ("X is editing")
 8. Offline-first hardening — backup/export/restore, sync audit, testy awarii
 9. Build + release — installer, auto-updater, CI
 
