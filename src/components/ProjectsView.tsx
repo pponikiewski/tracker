@@ -307,14 +307,7 @@ export function ProjectsView() {
     if (sourceId === targetId) return false;
     const target = findResource(targetId);
     if (!target) return false;
-    if (
-      source.type === "project" &&
-      target.type === "project" &&
-      source.parent_id === null &&
-      target.parent_id === null
-    ) {
-      return true;
-    }
+    if (source.parent_id === target.parent_id) return true;
     if (isDescendantPath(source.path, target.path)) return false;
     return canParent(target.type, source.type);
   };
@@ -342,12 +335,7 @@ export function ProjectsView() {
     try {
       const source = findResource(src);
       const target = findResource(id);
-      if (
-        source?.type === "project" &&
-        target?.type === "project" &&
-        source.parent_id === null &&
-        target.parent_id === null
-      ) {
+      if (source && target && source.parent_id === target.parent_id) {
         await reorderBefore(src, id);
       } else {
         await move(src, id);

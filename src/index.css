@@ -13,3 +13,32 @@ body,
   height: 100%;
   margin: 0;
 }
+
+* {
+  scrollbar-color: #404040 #0a0a0a;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  border: 2px solid #0a0a0a;
+  border-radius: 999px;
+  background: #404040;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #0a0a0a;
+}
