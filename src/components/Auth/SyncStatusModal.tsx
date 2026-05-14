@@ -16,6 +16,7 @@ interface ErrRow {
 
 export function SyncStatusModal({ onClose }: Props) {
   const [errors, setErrors] = useState<ErrRow[]>([]);
+  const syncStatus = useAuthStore((s) => s.syncStatus);
   const setPendingCount = useAuthStore((s) => s.setPendingCount);
 
   const refresh = async () => {
@@ -53,6 +54,11 @@ export function SyncStatusModal({ onClose }: Props) {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 w-[560px] max-h-[80vh] overflow-auto shadow-xl">
         <h2 className="text-sm font-semibold text-neutral-100 mb-3">Sync status</h2>
+        {syncStatus.kind === 'error' && (
+          <div className="mb-3 rounded border border-red-900 bg-red-950 px-3 py-2 text-xs text-red-300">
+            {syncStatus.message}
+          </div>
+        )}
         <div className="flex gap-2 mb-4">
           <button
             onClick={onRetry}

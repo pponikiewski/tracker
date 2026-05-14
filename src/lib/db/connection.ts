@@ -270,5 +270,6 @@ export async function resetUserScopedData(): Promise<void> {
   await db.execute(`DELETE FROM workspace_memberships WHERE user_id != 'local'`);
   // Drop workspaces that are not Local_Personal_Workspace.
   await db.execute(`DELETE FROM workspaces WHERE owner_id != 'local'`);
+  await db.execute(`DELETE FROM sync_outbox WHERE user_id IS NULL`);
   console.info('[db] resetUserScopedData: cleared non-local data for user switch');
 }

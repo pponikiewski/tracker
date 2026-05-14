@@ -183,6 +183,18 @@ export async function insertMembership(m: WorkspaceMembership): Promise<void> {
   });
 }
 
+export async function upsertMembershipLocal(m: WorkspaceMembership): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+       role=excluded.role,
+       joined_at=excluded.joined_at`,
+    [m.workspace_id, m.user_id, m.role, m.joined_at],
+  );
+}
+
 /**
  * Deletes a workspace membership and enqueues a delete op for sync.
  * Requirements: 7.2

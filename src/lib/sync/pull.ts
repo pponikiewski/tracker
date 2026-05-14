@@ -101,6 +101,10 @@ function cloudToLocalAssignment(c: Record<string, unknown>): Assignment {
   };
 }
 
+function resourceDepth(resource: Resource): number {
+  return resource.path.split('/').length;
+}
+
 /**
  * Ensures a Personal_Workspace exists in Supabase for the given user.
  * If the user can already see any workspace (owner or member), returns it.
@@ -180,6 +184,31 @@ async function rebuildAllPaths(): Promise<void> {
       [correctPath, r.id],
     );
   }
+}
+
+async function resourceExists(resourceId: string): Promise<boolean> {
+  const db = await getDb();
+  const rows = await db.select<Array<{ id: string }>>(
+    `SELECT id FROM resources WHERE id = $1 LIMIT 1`,
+    [resourceId],
+  );
+  return rows.length > 0;
+}
+
+async function normalizeResourceForLocalWrite(resource: Resource): Promise<Resource> {
+  if (resource.parent_id === null) return resource;
+  if (await resourceExists(resource.parent_id)) return resource;
+
+  console.warn(
+    `[sync] detaching resource ${resource.id}: parent ${resource.parent_id} is not present locally`,
+  );
+
+  return {
+    ...resource,
+    parent_id: null,
+    type: 'project',
+    path: resource.id,
+  };
 }
 
 export async function runInitialPull(userId: string): Promise<void> {
@@ -303,6 +332,11 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       );
     }
     for (const m of memMerge.pushOutbox) {
+      if (m.user_id === userId && cloudMemLoc.some(
+        (cloud) => cloud.workspace_id === m.workspace_id && cloud.user_id === m.user_id,
+      )) {
+        continue;
+      }
       // Strip synthetic id and updated_at (added only for lwwMerge) before enqueue —
       // Supabase workspace_memberships table has no 'id' column (composite PK)
       // and no 'updated_at' column.
@@ -398,36 +432,69 @@ function isMissingTable(err: SbError): boolean {
     : lwwMerge(localA, cloudAloc);
 
   try {
-    for (const r of rMerge.writeSqlite) {
-      await db.execute(
-        `INSERT INTO resources (id, workspace_id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at, deleted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-         ON CONFLICT(id) DO UPDATE SET
-           workspace_id=excluded.workspace_id,
-           parent_id=excluded.parent_id, name=excluded.name, type=excluded.type,
-           color=excluded.color, path=excluded.path, cached_minutes=excluded.cached_minutes,
-           created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
-        [
-          r.id, r.workspace_id, r.parent_id, r.name, r.type, r.color, r.path, r.cached_minutes,
-          r.created_at, r.updated_at, r.deleted_at,
-        ],
-      );
+    const resourcesToWrite = [...rMerge.writeSqlite].sort(
+      (a, b) => resourceDepth(a) - resourceDepth(b),
+    );
+
+    for (const r of resourcesToWrite) {
+      const localResource = await normalizeResourceForLocalWrite(r);
+      try {
+        await db.execute(
+          `INSERT INTO resources (id, workspace_id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at, deleted_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           ON CONFLICT(id) DO UPDATE SET
+             workspace_id=excluded.workspace_id,
+             parent_id=excluded.parent_id, name=excluded.name, type=excluded.type,
+             color=excluded.color, path=excluded.path, cached_minutes=excluded.cached_minutes,
+              created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
+          [
+            localResource.id, localResource.workspace_id, localResource.parent_id,
+            localResource.name, localResource.type, localResource.color,
+            localResource.path, localResource.cached_minutes,
+            localResource.created_at, localResource.updated_at, localResource.deleted_at,
+          ],
+        );
+      } catch (error) {
+        const wrapped = new Error(
+          `resource ${localResource.id} (${localResource.name}) write failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        (wrapped as Error & { cause?: unknown }).cause = error;
+        throw wrapped;
+      }
     }
     for (const e of eMerge.writeSqlite) {
-      await db.execute(
-        `INSERT INTO events (id, workspace_id, resource_id, date, minutes, goal, topics, notes, report, user_id, created_at, updated_at, deleted_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         ON CONFLICT(id) DO UPDATE SET
-           workspace_id=excluded.workspace_id,
-           resource_id=excluded.resource_id, date=excluded.date, minutes=excluded.minutes,
-           goal=excluded.goal, topics=excluded.topics, notes=excluded.notes, report=excluded.report,
-           user_id=excluded.user_id,
-           created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
-        [
-          e.id, e.workspace_id, e.resource_id, e.date, e.minutes, e.goal, e.topics, e.notes, e.report, e.user_id,
-          e.created_at, e.updated_at, e.deleted_at,
-        ],
-      );
+      if (!(await resourceExists(e.resource_id))) {
+        console.warn(
+          `[sync] skipping event ${e.id}: resource ${e.resource_id} is not present locally`,
+        );
+        continue;
+      }
+      try {
+        await db.execute(
+          `INSERT INTO events (id, workspace_id, resource_id, date, minutes, goal, topics, notes, report, user_id, created_at, updated_at, deleted_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           ON CONFLICT(id) DO UPDATE SET
+             workspace_id=excluded.workspace_id,
+             resource_id=excluded.resource_id, date=excluded.date, minutes=excluded.minutes,
+             goal=excluded.goal, topics=excluded.topics, notes=excluded.notes, report=excluded.report,
+             user_id=excluded.user_id,
+             created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
+          [
+            e.id, e.workspace_id, e.resource_id, e.date, e.minutes, e.goal, e.topics, e.notes, e.report, e.user_id,
+            e.created_at, e.updated_at, e.deleted_at,
+          ],
+        );
+      } catch (error) {
+        const wrapped = new Error(
+          `event ${e.id} for resource ${e.resource_id} write failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        (wrapped as Error & { cause?: unknown }).cause = error;
+        throw wrapped;
+      }
     }
 
     // Enqueue local-wins for push to cloud
@@ -470,7 +537,7 @@ function isMissingTable(err: SbError): boolean {
     // Req 8.9: on failure, set error status, do NOT mark as pulled (allow retry)
     auth.setSyncStatus({
       kind: 'error',
-      message: e instanceof Error ? e.message : 'pull failed',
+      message: e instanceof Error ? `pull failed: ${e.message}` : 'pull failed',
     });
     return;
   }

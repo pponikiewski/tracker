@@ -145,6 +145,10 @@ export async function clearAll(db: Database): Promise<void> {
   await db.execute(`DELETE FROM sync_outbox`);
 }
 
+export async function clearLegacyRows(db: Database): Promise<void> {
+  await db.execute(`DELETE FROM sync_outbox WHERE user_id IS NULL`);
+}
+
 // Req 11.3: "Retry now" — clear next_retry_at for errored rows so they're picked up immediately
 export async function resetRetry(db: Database): Promise<void> {
   await db.execute(

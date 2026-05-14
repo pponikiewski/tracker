@@ -325,6 +325,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         deleted_at: string | null;
       };
 
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('workspace_memberships')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', userId)
+        .single();
+
+      if (membershipError || !membershipData) {
+        throw new Error('Nie udało się pobrać membership po dołączeniu.');
+      }
+
+      const membership = membershipData as {
+        workspace_id: string;
+        user_id: string;
+        role: 'owner' | 'member';
+        joined_at: string;
+      };
+
       await workspaceQueries.upsertWorkspaceLocal({
         id: ws.id,
         name: ws.name,
@@ -334,12 +352,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         deleted_at: ws.deleted_at ? Date.parse(ws.deleted_at) : null,
       });
 
-      // Insert local membership for the newly joined user.
-      await workspaceQueries.insertMembership({
-        workspace_id: workspaceId,
-        user_id: userId,
-        role: 'member',
-        joined_at: Date.now(),
+      // Mirror the server-created membership locally. Do not enqueue it:
+      // redeem_workspace_join_code already wrote it in Supabase.
+      await workspaceQueries.upsertMembershipLocal({
+        workspace_id: membership.workspace_id,
+        user_id: membership.user_id,
+        role: membership.role,
+        joined_at: Date.parse(membership.joined_at),
       });
 
       await get().refresh();
