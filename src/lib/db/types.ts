@@ -37,30 +37,38 @@ export interface ResourceNode extends Resource {
 }
 
 /**
- * Returns the allowed child type for a given parent type, or null if leaf.
- * Hierarchy: project → stage → substage → task → (leaf).
+ * Allowed children for each parent type.
+ * Hierarchy: project → stage → substage → task.
+ * - task is a universal leaf-or-branch (allowed under everything, incl. itself)
+ * - project nests only inside project (the only way a project becomes a subproject)
  */
-export function defaultChildType(parent: ResourceType): ResourceType | null {
+const ALLOWED_CHILDREN: Record<ResourceType, ResourceType[]> = {
+  project: ["project", "stage", "task"],
+  stage: ["substage", "task"],
+  substage: ["task"],
+  task: ["task"],
+};
+
+/**
+ * Returns the default child type for the "+" / add-child action.
+ * project → stage, stage → substage, substage → task, task → task.
+ */
+export function defaultChildType(parent: ResourceType): ResourceType {
   switch (parent) {
     case "project":
-      return "project";
+      return "stage";
     case "stage":
       return "substage";
     case "substage":
       return "task";
     case "task":
-      return null;
+      return "task";
   }
 }
 
-/**
- * Validates that `child` is allowed under `parent`.
- * Permits the direct chain (project→stage, stage→substage, substage→task)
- * and the shortcut to task from project/stage.
- */
+/** True if `child` is allowed directly under `parent`. */
 export function canParent(parent: ResourceType, child: ResourceType): boolean {
-  void child;
-  return parent !== "task";
+  return ALLOWED_CHILDREN[parent].includes(child);
 }
 
 export interface Workspace {
