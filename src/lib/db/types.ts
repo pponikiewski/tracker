@@ -10,7 +10,6 @@ export interface Resource {
   color: string | null;
   path: string;
   cached_minutes: number;
-  sort_order: number;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
@@ -44,7 +43,7 @@ export interface ResourceNode extends Resource {
 export function defaultChildType(parent: ResourceType): ResourceType | null {
   switch (parent) {
     case "project":
-      return "stage";
+      return "project";
     case "stage":
       return "substage";
     case "substage":
@@ -60,12 +59,8 @@ export function defaultChildType(parent: ResourceType): ResourceType | null {
  * and the shortcut to task from project/stage.
  */
 export function canParent(parent: ResourceType, child: ResourceType): boolean {
-  if (child === "project") return false;
-  if (parent === "task") return false;
-  if (child === "task") return parent === "project" || parent === "stage" || parent === "substage";
-  if (child === "substage") return parent === "stage";
-  if (child === "stage") return parent === "project";
-  return false;
+  void child;
+  return parent !== "task";
 }
 
 export interface Workspace {

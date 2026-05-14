@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/store/projects";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useAssignmentStore } from "@/store/assignments";
@@ -140,7 +140,6 @@ export function ProjectsView() {
     addChild,
     rename,
     move,
-    reorderBefore,
     changeColor,
     deleteSubtree,
     liftAndDelete,
@@ -158,6 +157,7 @@ export function ProjectsView() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const draggingIdRef = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -307,56 +307,51 @@ export function ProjectsView() {
     if (sourceId === targetId) return false;
     const target = findResource(targetId);
     if (!target) return false;
-    if (source.parent_id === target.parent_id) return true;
     if (isDescendantPath(source.path, target.path)) return false;
     return canParent(target.type, source.type);
   };
 
   const handleDragOver = (e: React.DragEvent, id: string) => {
-    if (!draggingId) return;
-    if (canDropOn(draggingId, id)) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = "move";
-      if (dropTargetId !== id) setDropTargetId(id);
-    } else {
-      e.dataTransfer.dropEffect = "none";
-    }
+    const activeDraggingId = draggingIdRef.current ?? draggingId;
+    if (!activeDraggingId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    const validDropTarget = canDropOn(activeDraggingId, id);
+    const nextDropTargetId = validDropTarget ? id : null;
+    if (dropTargetId !== nextDropTargetId) setDropTargetId(nextDropTargetId);
   };
 
   const handleDrop = async (e: React.DragEvent, id: string) => {
-    if (!draggingId) return;
+    const activeDraggingId = draggingIdRef.current ?? draggingId;
+    if (!activeDraggingId) return;
     e.preventDefault();
     e.stopPropagation();
-    const src = draggingId;
+    const src = activeDraggingId;
+    draggingIdRef.current = null;
     setDraggingId(null);
     setDropTargetId(null);
     if (!canDropOn(src, id)) return;
     try {
-      const source = findResource(src);
-      const target = findResource(id);
-      if (source && target && source.parent_id === target.parent_id) {
-        await reorderBefore(src, id);
-      } else {
-        await move(src, id);
-      }
+      await move(src, id);
     } catch {
       /* validation error — silently ignore for MVP */
     }
   };
 
   const handleDragOverEmpty = (e: React.DragEvent) => {
-    if (!draggingId) return;
-    if (canDropOn(draggingId, null)) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-    }
+    const activeDraggingId = draggingIdRef.current ?? draggingId;
+    if (!activeDraggingId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
   };
 
   const handleDropEmpty = async (e: React.DragEvent) => {
-    if (!draggingId) return;
+    const activeDraggingId = draggingIdRef.current ?? draggingId;
+    if (!activeDraggingId) return;
     e.preventDefault();
-    const src = draggingId;
+    const src = activeDraggingId;
+    draggingIdRef.current = null;
     setDraggingId(null);
     setDropTargetId(null);
     if (!canDropOn(src, null)) return;
@@ -568,10 +563,14 @@ export function ProjectsView() {
               setRenamingId(null);
             }}
             onCancelRename={() => setRenamingId(null)}
-            onDragStart={(id) => setDraggingId(id)}
+            onDragStart={(id) => {
+              draggingIdRef.current = id;
+              setDraggingId(id);
+            }}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             onDragEnd={() => {
+              draggingIdRef.current = null;
               setDraggingId(null);
               setDropTargetId(null);
             }}

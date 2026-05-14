@@ -221,28 +221,10 @@ export async function getDb(): Promise<Database> {
   await db.execute(SCHEMA_SQL);
   await runPhase5Migration(db);
   await runPhase6Migration(db);
-  await ensureResourceSortOrderColumn(db);
   await ensureOutboxUserIdColumn(db);
   await purgeLocalOutboxRows(db);
   cached = db;
   return db;
-}
-
-async function ensureResourceSortOrderColumn(db: Database): Promise<void> {
-  type PragmaRow = { name: string };
-  const cols = await db.select<PragmaRow[]>("PRAGMA table_info('resources')");
-  if (!cols.some((c) => c.name === 'sort_order')) {
-    await db.execute('ALTER TABLE resources ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
-    await db.execute(
-      `UPDATE resources
-       SET sort_order = created_at
-       WHERE sort_order = 0`,
-    );
-  }
-  await db.execute(
-    `CREATE INDEX IF NOT EXISTS idx_resources_parent_order
-     ON resources(workspace_id, parent_id, sort_order, created_at)`,
-  );
 }
 
 /**
