@@ -168,8 +168,13 @@ async function resourceExists(resourceId: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-async function fetchAndWriteMissingResource(resourceId: string): Promise<boolean> {
+async function fetchAndWriteMissingResource(
+  resourceId: string,
+  visiting: Set<string> = new Set(),
+): Promise<boolean> {
   if (!supabase) return false;
+  if (visiting.has(resourceId)) return false; // cycle guard
+  visiting.add(resourceId);
   const db = await getDb();
   const { data, error } = await supabase
     .from('resources')
@@ -181,6 +186,7 @@ async function fetchAndWriteMissingResource(resourceId: string): Promise<boolean
 
   const resource = await normalizeResourceForLocalWrite(
     cloudToLocalResource(data as Record<string, unknown>),
+    visiting,
   );
   await db.execute(
     `INSERT INTO resources (id, workspace_id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at, deleted_at)
@@ -208,18 +214,29 @@ async function fetchAndWriteMissingResource(resourceId: string): Promise<boolean
   return true;
 }
 
-async function normalizeResourceForLocalWrite(resource: Resource): Promise<Resource> {
+async function normalizeResourceForLocalWrite(
+  resource: Resource,
+  visiting: Set<string> = new Set(),
+): Promise<Resource> {
   if (resource.parent_id === null) return resource;
   if (await resourceExists(resource.parent_id)) return resource;
+
+  // Parent missing locally — try to fetch it from cloud before falling back to detach.
+  // Symmetric with the event → resource recovery path.
+  const recovered = await fetchAndWriteMissingResource(resource.parent_id, visiting);
+  if (recovered && (await resourceExists(resource.parent_id))) {
+    return resource;
+  }
 
   console.warn(
     `[sync] detaching resource ${resource.id}: parent ${resource.parent_id} is not present locally`,
   );
 
+  // Preserve original type (invariant: type is fixed at creation; moveResource never mutates it).
+  // Local-only orphan state — next pull may reattach if parent becomes visible.
   return {
     ...resource,
     parent_id: null,
-    type: 'project',
     path: resource.id,
   };
 }
