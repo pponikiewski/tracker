@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
+import { authErrorMessage } from './errors';
 import { validateEmail, validatePassword } from './validation';
 
 type Tab = 'login' | 'signup';
@@ -36,7 +37,7 @@ export function LoginPage() {
         setSignupDone(true);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(authErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -47,8 +48,8 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo / app name */}
         <div className="mb-8 text-center">
-          <span className="text-2xl font-bold tracking-tight text-neutral-100">tracker</span>
-          <p className="mt-1 text-sm text-neutral-500">Time tracking for teams</p>
+          <span className="text-2xl font-bold tracking-tight text-neutral-100">Tracker</span>
+          <p className="mt-1 text-sm text-neutral-500">Rejestrowanie czasu dla zespołów</p>
         </div>
 
         {/* Card */}
@@ -64,7 +65,7 @@ export function LoginPage() {
               }`}
               onClick={() => switchTab('login')}
             >
-              Log in
+              Zaloguj się
             </button>
             <button
               type="button"
@@ -75,26 +76,26 @@ export function LoginPage() {
               }`}
               onClick={() => switchTab('signup')}
             >
-              Sign up
+              Utwórz konto
             </button>
           </div>
 
           {signupDone ? (
             <div className="py-4 text-center">
-              <p className="text-sm text-neutral-200">Check your email to confirm your account.</p>
+              <p className="text-sm text-neutral-200">Sprawdź email, aby potwierdzić konto.</p>
               <button
                 type="button"
                 className="mt-4 text-xs text-blue-400 hover:text-blue-300 transition-colors"
                 onClick={() => switchTab('login')}
               >
-                Back to log in
+                Wróć do logowania
               </button>
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-3">
               <input
                 type="email"
-                placeholder="Email"
+                placeholder="Adres email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 transition-colors focus:border-blue-500 focus:outline-none"
@@ -103,7 +104,7 @@ export function LoginPage() {
               />
               <input
                 type="password"
-                placeholder={tab === 'login' ? 'Password' : 'Password (min 8 chars)'}
+                placeholder={tab === 'login' ? 'Hasło' : 'Hasło (min. 8 znaków)'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 transition-colors focus:border-blue-500 focus:outline-none"
@@ -119,7 +120,7 @@ export function LoginPage() {
                 disabled={busy}
                 className="w-full rounded bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {busy ? '…' : tab === 'login' ? 'Log in' : 'Create account'}
+                {busy ? '...' : tab === 'login' ? 'Zaloguj się' : 'Utwórz konto'}
               </button>
             </form>
           )}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
+import { authErrorMessage } from './errors';
 import { validateEmail, validatePassword } from './validation';
 
 type Tab = 'login' | 'signup';
@@ -28,7 +29,7 @@ export function AuthModal({ onClose }: Props) {
       else await signUp(email, password);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(authErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -46,7 +47,7 @@ export function AuthModal({ onClose }: Props) {
                 : 'text-neutral-500 hover:text-neutral-300'
             }`}
             onClick={() => { setTab('login'); setError(null); }}>
-            Login
+            Zaloguj się
           </button>
           <button
             type="button"
@@ -56,13 +57,13 @@ export function AuthModal({ onClose }: Props) {
                 : 'text-neutral-500 hover:text-neutral-300'
             }`}
             onClick={() => { setTab('signup'); setError(null); }}>
-            Sign up
+            Utwórz konto
           </button>
         </div>
         <form onSubmit={submit} className="space-y-3">
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Adres email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-blue-500 transition-colors"
@@ -70,7 +71,7 @@ export function AuthModal({ onClose }: Props) {
           />
           <input
             type="password"
-            placeholder="Password (min 8)"
+            placeholder="Hasło (min. 8 znaków)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="w-full bg-neutral-800 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-blue-500 transition-colors"
@@ -82,13 +83,13 @@ export function AuthModal({ onClose }: Props) {
               type="button"
               onClick={onClose}
               className="px-3 py-1.5 text-xs border border-neutral-700 text-neutral-400 rounded hover:bg-neutral-800 hover:text-neutral-200 transition-colors">
-              Cancel
+              Anuluj
             </button>
             <button
               type="submit"
               disabled={busy}
               className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-              {busy ? '…' : tab === 'login' ? 'Login' : 'Create account'}
+              {busy ? '...' : tab === 'login' ? 'Zaloguj się' : 'Utwórz konto'}
             </button>
           </div>
         </form>

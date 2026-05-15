@@ -6,8 +6,8 @@
  * Returns null if valid, error message if invalid.
  */
 export function validateEmail(email: string): string | null {
-  if (!email.includes('@')) return 'Email must contain @';
-  if (email.length > 254) return 'Email must be 254 characters or fewer';
+  if (!email.includes('@')) return 'Adres email musi zawierać @.';
+  if (email.length > 254) return 'Adres email może mieć maksymalnie 254 znaki.';
   return null;
 }
 
@@ -16,7 +16,7 @@ export function validateEmail(email: string): string | null {
  * Returns null if valid, error message if invalid.
  */
 export function validatePassword(password: string): string | null {
-  if (password.length < 8) return 'Password must be at least 8 characters';
-  if (password.length > 128) return 'Password must be 128 characters or fewer';
+  if (password.length < 8) return 'Hasło musi mieć co najmniej 8 znaków.';
+  if (password.length > 128) return 'Hasło może mieć maksymalnie 128 znaków.';
   return null;
 }

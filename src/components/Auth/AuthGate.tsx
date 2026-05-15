@@ -17,10 +17,10 @@ export function AuthGate() {
 
   // Req 12.4: show spinner while loading
   if (state.kind === 'loading') {
-    return <span className="text-xs text-gray-400" aria-label="Loading authentication...">...</span>;
+    return <span className="text-xs text-gray-400" aria-label="Ładowanie logowania...">...</span>;
   }
 
-  // Req 12.1: show Sign in button when anonymous
+  // Req 12.1: show sign-in button when anonymous
   if (state.kind === 'anonymous') {
     return (
       <>
@@ -28,7 +28,7 @@ export function AuthGate() {
           className="rounded border border-neutral-700 px-3 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
           onClick={() => setOpen(true)}
         >
-          Sign in
+          Zaloguj się
         </button>
         {open && <AuthModal onClose={() => setOpen(false)} />}
       </>
