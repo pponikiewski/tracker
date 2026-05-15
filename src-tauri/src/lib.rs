@@ -231,6 +231,36 @@ async fn connect(app: &AppHandle) -> Result<SqliteConnection, String> {
     Ok(conn)
 }
 
+fn validate_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("name required".into());
+    }
+    if trimmed.len() > 256 {
+        return Err("name too long (max 256)".into());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn validate_text_field(value: &Option<String>, max: usize, field: &str) -> Result<(), String> {
+    if let Some(v) = value {
+        if v.len() > max {
+            return Err(format!("{field} too long (max {max})"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_minutes(minutes: i64) -> Result<(), String> {
+    if minutes <= 0 {
+        return Err("minutes must be positive".into());
+    }
+    if minutes > 43_200 {
+        return Err("minutes too large (max 43200 = 30 days)".into());
+    }
+    Ok(())
+}
+
 async fn is_local_workspace(
     executor: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     workspace_id: &str,
@@ -441,6 +471,7 @@ async fn recalc_ancestor_chain(
 
 #[tauri::command]
 async fn create_workspace_tx(app: AppHandle, input: CreateWorkspaceInput) -> Result<(), String> {
+    let name = validate_name(&input.name)?;
     let mut conn = connect(&app).await?;
     let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
 
@@ -449,7 +480,7 @@ async fn create_workspace_tx(app: AppHandle, input: CreateWorkspaceInput) -> Res
          VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&input.id)
-    .bind(&input.name)
+    .bind(&name)
     .bind(&input.owner_id)
     .bind(input.timestamp)
     .bind(input.timestamp)
@@ -531,6 +562,7 @@ async fn create_workspace_tx(app: AppHandle, input: CreateWorkspaceInput) -> Res
 
 #[tauri::command]
 async fn create_resource_tx(app: AppHandle, input: CreateResourceInput) -> Result<(), String> {
+    let name = validate_name(&input.name)?;
     let mut conn = connect(&app).await?;
     let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
 
@@ -550,7 +582,7 @@ async fn create_resource_tx(app: AppHandle, input: CreateResourceInput) -> Resul
     )
     .bind(&input.id)
     .bind(&input.parent_id)
-    .bind(&input.name)
+    .bind(&name)
     .bind(&input.r#type)
     .bind(&input.color)
     .bind(&path)
@@ -611,6 +643,7 @@ async fn create_resource_tx(app: AppHandle, input: CreateResourceInput) -> Resul
 
 #[tauri::command]
 async fn rename_resource_tx(app: AppHandle, input: RenameResourceInput) -> Result<(), String> {
+    let name = validate_name(&input.name)?;
     let mut conn = connect(&app).await?;
     let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
     let previous = fetch_resource(&mut tx, &input.id)
@@ -618,7 +651,7 @@ async fn rename_resource_tx(app: AppHandle, input: RenameResourceInput) -> Resul
         .ok_or("Resource not found")?;
 
     sqlx::query("UPDATE resources SET name = ?, updated_at = ? WHERE id = ?")
-        .bind(&input.name)
+        .bind(&name)
         .bind(input.timestamp)
         .bind(&input.id)
         .execute(&mut *tx)
@@ -1091,6 +1124,11 @@ async fn detach_children_as_projects_tx(
 
 #[tauri::command]
 async fn create_event_tx(app: AppHandle, input: CreateEventInput) -> Result<(), String> {
+    validate_minutes(input.minutes)?;
+    validate_text_field(&input.goal, 512, "goal")?;
+    validate_text_field(&input.topics, 512, "topics")?;
+    validate_text_field(&input.notes, 8192, "notes")?;
+    validate_text_field(&input.report, 8192, "report")?;
     let mut conn = connect(&app).await?;
     let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
 
@@ -1176,6 +1214,11 @@ async fn create_event_tx(app: AppHandle, input: CreateEventInput) -> Result<(), 
 
 #[tauri::command]
 async fn update_event_tx(app: AppHandle, input: UpdateEventInput) -> Result<(), String> {
+    validate_minutes(input.minutes)?;
+    validate_text_field(&input.goal, 512, "goal")?;
+    validate_text_field(&input.topics, 512, "topics")?;
+    validate_text_field(&input.notes, 8192, "notes")?;
+    validate_text_field(&input.report, 8192, "report")?;
     let mut conn = connect(&app).await?;
     let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
     let previous = fetch_event(&mut tx, &input.id)
