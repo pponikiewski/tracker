@@ -570,7 +570,6 @@ async fn move_resource_tx(app: AppHandle, input: MoveResourceInput) -> Result<()
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             create_workspace_tx,
