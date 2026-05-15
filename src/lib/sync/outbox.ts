@@ -4,6 +4,20 @@ import type { Entity, Op } from './types';
 
 const MAX_ERR_LEN = 1024;
 const MAX_BACKOFF_MS = 5 * 60 * 1000; // 300000ms = 5 min
+const IMMEDIATE_FLUSH_DELAY_MS = 250;
+
+let immediateFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleImmediateFlush(): void {
+  if (typeof window === 'undefined') return;
+  if (immediateFlushTimer) clearTimeout(immediateFlushTimer);
+  immediateFlushTimer = setTimeout(() => {
+    immediateFlushTimer = null;
+    void import('./worker')
+      .then(({ tick }) => tick())
+      .catch((err) => console.warn('[cloud] immediate save failed:', err));
+  }, IMMEDIATE_FLUSH_DELAY_MS);
+}
 
 /**
  * Returns the id of the currently authenticated user, or null if anonymous.
@@ -53,6 +67,9 @@ export async function enqueue(
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [entity, entityId, op, JSON.stringify(data), Date.now(), userId],
   );
+
+  useAuthStore.getState().setPendingCount(await countPendingForUser(db, userId));
+  scheduleImmediateFlush();
 }
 
 /**
@@ -197,7 +214,7 @@ export async function clearLegacyRows(db: Database): Promise<void> {
   await db.execute(`DELETE FROM sync_outbox WHERE user_id IS NULL`);
 }
 
-// Req 11.3: "Retry now" — clear next_retry_at for errored rows so they're picked up immediately
+// Req 11.3: "Try again" — clear next_retry_at for errored rows so they're picked up immediately
 export async function resetRetry(db: Database): Promise<void> {
   await db.execute(
     `UPDATE sync_outbox SET next_retry_at = NULL WHERE last_error IS NOT NULL`,

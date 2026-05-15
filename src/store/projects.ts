@@ -124,7 +124,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     if (!workspaceId) return;
     await createResource({ parentId: null, name, type: "project", color, workspaceId });
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   addChild: async (parentId, name, type, color) => {
@@ -132,37 +132,37 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     if (!workspaceId) return;
     await createResource({ parentId, name, type, color, workspaceId });
     set((s) => ({ expandedIds: new Set([...s.expandedIds, parentId]) }));
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   rename: async (id, name) => {
     await renameResource(id, name);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   move: async (id, newParentId) => {
     await moveResource(id, newParentId);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   changeColor: async (id, color) => {
     await setResourceColor(id, color);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   deleteSubtree: async (id) => {
     await softDeleteSubtree(id);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   liftAndDelete: async (id) => {
     await liftChildrenAndDelete(id);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   detachAsProjects: async (id) => {
     await detachChildrenAsProjects(id);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   logTime: async (input) => {
@@ -171,16 +171,16 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     const authState = useAuthStore.getState().state;
     const userId = authState.kind === "authed" ? authState.user.id : null;
     await createEvent({ ...input, workspaceId, userId });
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   updateLog: async (input) => {
     await updateEvent(input);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 
   deleteLog: async (id) => {
     await deleteEvent(id);
-    await get().refresh();
+    await get().refresh({ showLoading: false });
   },
 }));
