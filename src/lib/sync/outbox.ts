@@ -14,7 +14,7 @@ function scheduleImmediateFlush(): void {
   immediateFlushTimer = setTimeout(() => {
     immediateFlushTimer = null;
     void import('./worker')
-      .then(({ tick }) => tick())
+      .then(({ tick }) => tick({ silent: true }))
       .catch((err) => console.warn('[cloud] immediate save failed:', err));
   }, IMMEDIATE_FLUSH_DELAY_MS);
 }

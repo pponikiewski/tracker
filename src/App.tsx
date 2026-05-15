@@ -23,7 +23,7 @@ function App() {
   const [tab, setTab] = useState<Tab>("projects");
   const [hasResolvedInitialWorkspaceState, setHasResolvedInitialWorkspaceState] = useState(false);
   const authState = useAuthStore((s) => s.state);
-  const syncStatus = useAuthStore((s) => s.syncStatus);
+  const isInitialPull = useAuthStore((s) => s.syncStatus.kind === "initial-pull");
 
   // All hooks must be called unconditionally before any early returns.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
@@ -41,10 +41,10 @@ function App() {
       setHasResolvedInitialWorkspaceState(false);
       return;
     }
-    if (!workspaceLoading && syncStatus.kind !== "initial-pull") {
+    if (!workspaceLoading && !isInitialPull) {
       setHasResolvedInitialWorkspaceState(true);
     }
-  }, [authState.kind, workspaceLoading, syncStatus.kind]);
+  }, [authState.kind, workspaceLoading, isInitialPull]);
 
   useEffect(() => {
     const previousWorkspaceId = previousWorkspaceIdRef.current;
@@ -110,7 +110,7 @@ function App() {
   const visibleWorkspaces = workspaces.filter((w) => w.deleted_at === null);
   const isResolvingCloudWorkspace =
     authState.kind === "authed" &&
-    (workspaceLoading || syncStatus.kind === "initial-pull") &&
+    (workspaceLoading || isInitialPull) &&
     visibleWorkspaces.length === 0 &&
     activeWorkspaceId === null;
 

@@ -27,6 +27,10 @@ let visibilityHandler: (() => void) | null = null;
 let tickInFlight: Promise<void> | null = null;
 let pullInFlight: Promise<void> | null = null;
 
+interface TickOptions {
+  silent?: boolean;
+}
+
 export function collapseDuplicates(rows: ReadyRow[]): CollapseResult {
   const latest = new Map<string, ReadyRow>();
   const perEntity: Record<Entity, ReadyRow[]> = { resource: [], event: [], workspace: [], workspace_membership: [], assignment: [] };
@@ -304,13 +308,13 @@ async function flushEntity(
   return outcome;
 }
 
-export async function tick(): Promise<void> {
+export async function tick(options: TickOptions = {}): Promise<void> {
   // Serialise concurrent invocations (interval timer + visibility handler
   // + explicit UI triggers can all fire in parallel).
   if (tickInFlight) return tickInFlight;
   tickInFlight = (async () => {
     try {
-      await tickInternal();
+      await tickInternal(options);
     } finally {
       tickInFlight = null;
     }
@@ -318,11 +322,12 @@ export async function tick(): Promise<void> {
   return tickInFlight;
 }
 
-async function tickInternal(): Promise<void> {
+async function tickInternal(options: TickOptions): Promise<void> {
+  const silent = options.silent ?? false;
   const auth = useAuthStore.getState();
   if (auth.state.kind !== 'authed') return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    auth.setSyncStatus({ kind: 'offline' });
+    if (!silent) auth.setSyncStatus({ kind: 'offline' });
     return;
   }
   const db = await getDb();
@@ -333,7 +338,7 @@ async function tickInternal(): Promise<void> {
     auth.setPendingCount(await countPendingForUser(db, userId));
     return;
   }
-  auth.setSyncStatus({ kind: 'syncing' });
+  if (!silent) auth.setSyncStatus({ kind: 'syncing' });
   const { perEntity, supersededIds } = collapseDuplicates(rows);
 
   // Req 6.7: flush each entity independently
@@ -383,7 +388,9 @@ async function tickInternal(): Promise<void> {
         .filter(Boolean).join('; ') || 'sync error';
     auth.setSyncStatus({ kind: 'error', message: msg });
   } else {
-    auth.setSyncStatus({ kind: 'idle' });
+    if (!silent || auth.syncStatus.kind !== 'idle') {
+      auth.setSyncStatus({ kind: 'idle' });
+    }
     auth.setLastSyncAt(Date.now());
   }
   auth.setPendingCount(await countPendingForUser(db, userId));
@@ -413,7 +420,7 @@ export async function pullNow(): Promise<void> {
 
 export function startWorker(): void {
   if (timer) return; // Req 15.3: idempotent
-  timer = setInterval(() => { void tick(); }, 10_000);
+  timer = setInterval(() => { void tick({ silent: true }); }, 10_000);
   // Faza 7: Supabase Realtime delivers cloud changes near-instantly. This poll
   // stays only as a fallback for dropped websockets, hence the slow interval.
   pullTimer = setInterval(() => { void pullNow(); }, 120_000);
@@ -422,7 +429,7 @@ export function startWorker(): void {
   if (typeof document !== 'undefined') {
     visibilityHandler = () => {
       if (document.visibilityState === 'visible') {
-        void tick();
+        void tick({ silent: true });
         void pullNow();
       }
     };

@@ -23,18 +23,33 @@ export async function getResource(id: string): Promise<Resource | null> {
   return rows[0] ?? null;
 }
 
+export async function listResourcesByIds(ids: string[]): Promise<Resource[]> {
+  if (ids.length === 0) return [];
+  const db = await getDb();
+  const uniqueIds = [...new Set(ids)];
+  const placeholders = uniqueIds.map((_, index) => `$${index + 1}`).join(",");
+  return db.select<Resource[]>(
+    `SELECT * FROM resources
+     WHERE id IN (${placeholders})
+     ORDER BY path, name ASC, created_at ASC`,
+    uniqueIds,
+  );
+}
+
 export interface CreateResourceInput {
+  id?: string;
   parentId: string | null;
   name: string;
   type: ResourceType;
   color?: string | null;
   workspaceId: string;
+  timestamp?: number;
 }
 
 export async function createResource(input: CreateResourceInput): Promise<string> {
   return withTx(async (db) => {
-    const id = newId();
-    const ts = now();
+    const id = input.id ?? newId();
+    const ts = input.timestamp ?? now();
 
     let path: string;
     if (input.parentId === null) {
@@ -338,6 +353,7 @@ export async function detachChildrenAsProjects(id: string): Promise<void> {
 // ---- Events ----
 
 export interface CreateEventInput {
+  id?: string;
   resourceId: string;
   date: string;
   minutes: number;
@@ -347,12 +363,13 @@ export interface CreateEventInput {
   report?: string;
   workspaceId: string;
   userId?: string | null;
+  timestamp?: number;
 }
 
 export async function createEvent(input: CreateEventInput): Promise<string> {
   return withTx(async (db) => {
-    const id = newId();
-    const ts = now();
+    const id = input.id ?? newId();
+    const ts = input.timestamp ?? now();
     await db.execute(
       `INSERT INTO events
          (id, resource_id, date, minutes, goal, topics, notes, report, workspace_id, user_id, created_at, updated_at)
@@ -377,11 +394,16 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
     const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
     if (rows[0]) {
       await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
-      void import("@/lib/sync/worker").then(({ tick }) => tick());
     }
 
     return id;
   });
+}
+
+export async function getEvent(id: string): Promise<TimeEvent | null> {
+  const db = await getDb();
+  const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1 LIMIT 1", [id]);
+  return rows[0] ?? null;
 }
 
 export async function listEventsForResource(resourceId: string): Promise<TimeEvent[]> {

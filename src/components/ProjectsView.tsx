@@ -130,22 +130,20 @@ function filterTree(nodes: ResourceNode[], visibleIds: Set<string>): ResourceNod
 }
 
 export function ProjectsView() {
-  const {
-    resources,
-    tree,
-    error,
-    refresh,
-    toggleExpanded,
-    addProject,
-    addChild,
-    rename,
-    move,
-    changeColor,
-    deleteSubtree,
-    liftAndDelete,
-    detachAsProjects,
-    logTime,
-  } = useProjects();
+  const resources = useProjects((s) => s.resources);
+  const tree = useProjects((s) => s.tree);
+  const error = useProjects((s) => s.error);
+  const refresh = useProjects((s) => s.refresh);
+  const toggleExpanded = useProjects((s) => s.toggleExpanded);
+  const addProject = useProjects((s) => s.addProject);
+  const addChild = useProjects((s) => s.addChild);
+  const rename = useProjects((s) => s.rename);
+  const move = useProjects((s) => s.move);
+  const changeColor = useProjects((s) => s.changeColor);
+  const deleteSubtree = useProjects((s) => s.deleteSubtree);
+  const liftAndDelete = useProjects((s) => s.liftAndDelete);
+  const detachAsProjects = useProjects((s) => s.detachAsProjects);
+  const logTime = useProjects((s) => s.logTime);
 
   const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
   const memberships = useWorkspaceStore((s) => s.memberships);
@@ -252,7 +250,16 @@ export function ProjectsView() {
     return () => document.removeEventListener("contextmenu", onCtx);
   }, []);
 
-  const findResource = (id: string): Resource | undefined => resources.find((r) => r.id === id);
+  const findResource = useCallback(
+    (id: string): Resource | undefined => resources.find((r) => r.id === id),
+    [resources],
+  );
+
+  const findCurrentResource = useCallback(
+    (id: string): Resource | undefined =>
+      useProjects.getState().resources.find((resource) => resource.id === id),
+    [],
+  );
 
   const resolveResourceColor = (resource: Resource): string => {
     if (resource.color) return resource.color;
@@ -344,19 +351,19 @@ export function ProjectsView() {
 
   // ---- Drag-drop ----
 
-  const canDropOn = (sourceId: string, targetId: string | null): boolean => {
-    const source = findResource(sourceId);
+  const canDropOn = useCallback((sourceId: string, targetId: string | null): boolean => {
+    const source = findCurrentResource(sourceId);
     if (!source) return false;
     if (targetId === null) {
       // Only a project may live at the top level.
       return source.type === "project";
     }
     if (sourceId === targetId) return false;
-    const target = findResource(targetId);
+    const target = findCurrentResource(targetId);
     if (!target) return false;
     if (isDescendantPath(source.path, target.path)) return false;
     return canParent(target.type, source.type);
-  };
+  }, [findCurrentResource]);
 
   const handleDragOver = useCallback(
     (e: React.DragEvent, id: string) => {
@@ -369,11 +376,7 @@ export function ProjectsView() {
       const nextDropTargetId = validDropTarget ? id : null;
       setDropTargetIdStore(nextDropTargetId);
     },
-    // canDropOn closes over `resources` (via findResource) which is fine; the
-    // closure is recreated when resources change, but TreeNode is memoized so
-    // children only see the new ref if their own subscribed slice changed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [resources, setDropTargetIdStore],
+    [canDropOn, setDropTargetIdStore],
   );
 
   const handleDrop = useCallback(
@@ -392,8 +395,7 @@ export function ProjectsView() {
         /* validation error — silently ignore for MVP */
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [resources, resetDrag, move],
+    [canDropOn, resetDrag, move],
   );
 
   const handleDragOverEmpty = (e: React.DragEvent) => {

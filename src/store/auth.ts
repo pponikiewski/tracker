@@ -29,7 +29,11 @@ interface AuthStore {
   setLastSyncAt: (t: number) => void;
 }
 
-export const useAuthStore = create<AuthStore>((set) => ({
+function syncStatusEqual(a: SyncStatus, b: SyncStatus): boolean {
+  return a.kind === b.kind && (a.kind !== 'error' || b.kind !== 'error' || a.message === b.message);
+}
+
+export const useAuthStore = create<AuthStore>((set, get) => ({
   state: { kind: 'loading' },
   syncStatus: { kind: 'idle' },
   pendingCount: 0,
@@ -96,7 +100,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
     await supabase.auth.signOut();
   },
 
-  setSyncStatus: (s) => set({ syncStatus: s }),
-  setPendingCount: (n) => set({ pendingCount: n }),
-  setLastSyncAt: (t) => set({ lastSyncAt: t }),
+  setSyncStatus: (s) => {
+    if (!syncStatusEqual(get().syncStatus, s)) set({ syncStatus: s });
+  },
+  setPendingCount: (n) => {
+    if (get().pendingCount !== n) set({ pendingCount: n });
+  },
+  setLastSyncAt: (t) => {
+    if (get().lastSyncAt !== t) set({ lastSyncAt: t });
+  },
 }));

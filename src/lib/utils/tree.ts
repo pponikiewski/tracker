@@ -27,11 +27,38 @@ export function isDescendantPath(ancestor: string, descendant: string): boolean 
   return descendant === ancestor || descendant.startsWith(`${ancestor}/`);
 }
 
+function resourceFieldsEqual(a: Resource, b: Resource): boolean {
+  return (
+    a.id === b.id &&
+    a.workspace_id === b.workspace_id &&
+    a.parent_id === b.parent_id &&
+    a.name === b.name &&
+    a.type === b.type &&
+    a.color === b.color &&
+    a.path === b.path &&
+    a.cached_minutes === b.cached_minutes &&
+    a.created_at === b.created_at &&
+    a.updated_at === b.updated_at &&
+    a.deleted_at === b.deleted_at
+  );
+}
+
+function flattenTree(nodes: ResourceNode[], byId: Map<string, ResourceNode>): void {
+  for (const node of nodes) {
+    byId.set(node.id, node);
+    flattenTree(node.children, byId);
+  }
+}
+
 /**
  * Build a tree from a flat list of Resources sorted by path.
  * Resolves effective_color by walking ancestors in the same flat list.
+ *
+ * When previousTree is provided, unchanged nodes and child arrays are reused.
+ * That keeps React.memo'd tree rows from re-rendering after small mutations
+ * such as logging time against one task.
  */
-export function buildTree(resources: Resource[]): ResourceNode[] {
+export function buildTree(resources: Resource[], previousTree?: ResourceNode[]): ResourceNode[] {
   const byId = new Map<string, ResourceNode>();
   for (const r of resources) {
     byId.set(r.id, {
@@ -77,5 +104,33 @@ export function buildTree(resources: Resource[]): ResourceNode[] {
   };
   sortRecursive(roots);
 
-  return roots;
+  if (!previousTree) return roots;
+
+  const previousById = new Map<string, ResourceNode>();
+  flattenTree(previousTree, previousById);
+
+  const reuseRecursive = (node: ResourceNode): ResourceNode => {
+    const children = node.children.map(reuseRecursive);
+    const previous = previousById.get(node.id);
+    if (
+      previous &&
+      resourceFieldsEqual(previous, node) &&
+      previous.effective_color === node.effective_color &&
+      previous.children.length === children.length &&
+      previous.children.every((child, index) => child === children[index])
+    ) {
+      return previous;
+    }
+    return { ...node, children };
+  };
+
+  const reusedRoots = roots.map(reuseRecursive);
+  if (
+    previousTree.length === reusedRoots.length &&
+    previousTree.every((node, index) => node === reusedRoots[index])
+  ) {
+    return previousTree;
+  }
+
+  return reusedRoots;
 }
