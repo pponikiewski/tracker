@@ -31,6 +31,7 @@ AS $$
     SELECT 1 FROM workspace_memberships
     WHERE workspace_id = p_workspace
       AND user_id      = p_user
+      AND deleted_at IS NULL
   );
 $$;
 
@@ -72,8 +73,12 @@ CREATE TABLE IF NOT EXISTS workspace_memberships (
   user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   role         TEXT NOT NULL CHECK (role IN ('owner', 'member')),
   joined_at    TIMESTAMPTZ NOT NULL,
+  deleted_at   TIMESTAMPTZ,
   PRIMARY KEY (workspace_id, user_id)
 );
+
+ALTER TABLE workspace_memberships
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 ALTER TABLE workspace_memberships ENABLE ROW LEVEL SECURITY;
 
@@ -259,6 +264,7 @@ CREATE POLICY "owner_insert" ON workspace_join_codes
       WHERE wm.workspace_id = workspace_join_codes.workspace_id
         AND wm.user_id      = auth.uid()
         AND wm.role         = 'owner'
+        AND wm.deleted_at IS NULL
     )
   );
 
@@ -270,6 +276,7 @@ CREATE POLICY "owner_select" ON workspace_join_codes
       WHERE wm.workspace_id = workspace_join_codes.workspace_id
         AND wm.user_id      = auth.uid()
         AND wm.role         = 'owner'
+        AND wm.deleted_at IS NULL
     )
   );
 
@@ -281,6 +288,7 @@ CREATE POLICY "owner_delete" ON workspace_join_codes
       WHERE wm.workspace_id = workspace_join_codes.workspace_id
         AND wm.user_id      = auth.uid()
         AND wm.role         = 'owner'
+        AND wm.deleted_at IS NULL
     )
   );
 
@@ -319,9 +327,12 @@ BEGIN
     RAISE EXCEPTION 'Invalid or expired code' USING ERRCODE = '22023';
   END IF;
 
-  INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
-  VALUES (v_code_row.workspace_id, v_user_id, 'member', now())
-  ON CONFLICT (workspace_id, user_id) DO NOTHING;
+  INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, deleted_at)
+  VALUES (v_code_row.workspace_id, v_user_id, 'member', now(), NULL)
+  ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+    role = 'member',
+    joined_at = COALESCE(workspace_memberships.joined_at, excluded.joined_at),
+    deleted_at = NULL;
 
   UPDATE workspace_join_codes
     SET used_at = now(),

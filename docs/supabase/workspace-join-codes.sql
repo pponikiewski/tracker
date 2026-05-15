@@ -6,6 +6,10 @@
 -- Drop legacy invites table if you want to clean up (optional — safe to skip).
 -- DROP TABLE IF EXISTS invites;
 
+-- Join-code redemption reactivates soft-deleted memberships.
+ALTER TABLE workspace_memberships
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
 -- ---------------------------------------------------------------------------
 -- 1. Table
 -- ---------------------------------------------------------------------------
@@ -45,6 +49,7 @@ CREATE POLICY "owner_insert" ON workspace_join_codes
       WHERE wm.workspace_id = workspace_join_codes.workspace_id
         AND wm.user_id      = auth.uid()
         AND wm.role         = 'owner'
+        AND wm.deleted_at IS NULL
     )
   );
 
@@ -56,6 +61,7 @@ CREATE POLICY "owner_select" ON workspace_join_codes
       WHERE wm.workspace_id = workspace_join_codes.workspace_id
         AND wm.user_id      = auth.uid()
         AND wm.role         = 'owner'
+        AND wm.deleted_at IS NULL
     )
   );
 
@@ -67,6 +73,7 @@ CREATE POLICY "owner_delete" ON workspace_join_codes
       WHERE wm.workspace_id = workspace_join_codes.workspace_id
         AND wm.user_id      = auth.uid()
         AND wm.role         = 'owner'
+        AND wm.deleted_at IS NULL
     )
   );
 
@@ -111,10 +118,14 @@ BEGIN
     RAISE EXCEPTION 'Invalid or expired code' USING ERRCODE = '22023';
   END IF;
 
-  -- Insert membership (idempotent: if the user is already a member, skip).
-  INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
-  VALUES (v_code_row.workspace_id, v_user_id, 'member', now())
-  ON CONFLICT (workspace_id, user_id) DO NOTHING;
+  -- Insert or reactivate membership. Reactivation matters because memberships
+  -- are soft-deleted with deleted_at tombstones.
+  INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, deleted_at)
+  VALUES (v_code_row.workspace_id, v_user_id, 'member', now(), NULL)
+  ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+    role = 'member',
+    joined_at = COALESCE(workspace_memberships.joined_at, excluded.joined_at),
+    deleted_at = NULL;
 
   -- Mark the code as consumed.
   UPDATE workspace_join_codes

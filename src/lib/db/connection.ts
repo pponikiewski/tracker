@@ -5,6 +5,23 @@ const DB_URL = "sqlite:tracker.db";
 
 let cached: Database | null = null;
 
+type PragmaRow = { name: string };
+
+async function hasColumn(db: Database, tableName: string, columnName: string): Promise<boolean> {
+  const cols = await db.select<PragmaRow[]>(`PRAGMA table_info('${tableName}')`);
+  return cols.some((c) => c.name === columnName);
+}
+
+async function ensureColumn(
+  db: Database,
+  tableName: string,
+  columnName: string,
+  definition: string,
+): Promise<void> {
+  if (await hasColumn(db, tableName, columnName)) return;
+  await db.execute(`ALTER TABLE ${tableName} ADD COLUMN ${definition}`);
+}
+
 /**
  * Runs the Phase 5 multi-tenant migration idempotently.
  *
@@ -19,7 +36,6 @@ let cached: Database | null = null;
  */
 export async function runPhase5Migration(db: Database): Promise<void> {
   // Check idempotency: does workspace_id already exist in resources?
-  type PragmaRow = { name: string };
   const columns = await db.select<PragmaRow[]>("PRAGMA table_info(resources)");
   const alreadyMigrated = columns.some((col) => col.name === "workspace_id");
   if (alreadyMigrated) return;
@@ -43,6 +59,7 @@ export async function runPhase5Migration(db: Database): Promise<void> {
     updated_at  INTEGER NOT NULL,
     deleted_at  INTEGER
   )`);
+  await ensureColumn(db, "workspaces", "deleted_at", "deleted_at INTEGER");
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id)`);
   await db.execute(
     `CREATE INDEX IF NOT EXISTS idx_workspaces_active ON workspaces(deleted_at) WHERE deleted_at IS NULL`,
@@ -122,7 +139,6 @@ export async function runPhase5Migration(db: Database): Promise<void> {
  */
 export async function runPhase6Migration(db: Database): Promise<void> {
   // Check idempotency: does the assignments table already exist?
-  type PragmaRow = { name: string };
   const columns = await db.select<PragmaRow[]>("PRAGMA table_info('assignments')");
   if (columns.length > 0) return;
 
@@ -230,16 +246,165 @@ export async function getDb(): Promise<Database> {
   await db.execute(SCHEMA_SQL);
   await runPhase5Migration(db);
   await runPhase6Migration(db);
+  await ensureSchemaMigrationsTable(db);
+  await ensurePhase5CoreSchema(db);
+  await markSchemaMigration(db, "20260601000001_phase5_core_repair");
+  await ensurePhase6CoreSchema(db);
+  await markSchemaMigration(db, "20260615000001_phase6_core_repair");
   await ensureMembershipDisplayRoleColumns(db);
   await ensureMembershipDeletedAtColumn(db);
   await ensureOutboxUserIdColumn(db);
   await ensureActivityLogSchema(db);
+  await markSchemaMigration(db, "20260715000001_activity_log_repair");
   await ensureOutboxAllowsActivityLog(db);
   await ensureWorkspaceQueryIndexes(db);
+  await markSchemaMigration(db, "20260720000002_workspace_query_indexes");
   await purgeLocalOutboxRows(db);
   await purgeLegacyResourceSortOrderFromOutbox(db);
   cached = db;
   return db;
+}
+
+async function ensureSchemaMigrationsTable(db: Database): Promise<void> {
+  await db.execute(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    TEXT PRIMARY KEY,
+    applied_at INTEGER NOT NULL
+  )`);
+}
+
+async function markSchemaMigration(db: Database, version: string): Promise<void> {
+  await db.execute(
+    `INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES ($1, $2)`,
+    [version, Date.now()],
+  );
+}
+
+async function ensureLocalPersonalWorkspace(db: Database): Promise<string> {
+  await db.execute(
+    "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+  );
+
+  const existing = await db.select<Array<{ value: string }>>(
+    "SELECT value FROM kv_store WHERE key = 'local_workspace_id' LIMIT 1",
+  );
+  const now = Date.now();
+  const localWorkspaceId = existing[0]?.value ?? crypto.randomUUID();
+
+  await db.execute(
+    "INSERT OR IGNORE INTO kv_store (key, value) VALUES ('local_workspace_id', $1)",
+    [localWorkspaceId],
+  );
+  await db.execute(
+    `INSERT OR IGNORE INTO workspaces (id, name, owner_id, created_at, updated_at)
+     VALUES ($1, 'My workspace', 'local', $2, $2)`,
+    [localWorkspaceId, now],
+  );
+  await db.execute(
+    `INSERT OR IGNORE INTO workspace_memberships
+       (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at, deleted_at)
+     VALUES ($1, 'local', 'owner', $2, NULL, NULL, NULL)`,
+    [localWorkspaceId, now],
+  );
+
+  return localWorkspaceId;
+}
+
+async function ensurePhase5CoreSchema(db: Database): Promise<void> {
+  await db.execute(`CREATE TABLE IF NOT EXISTS workspaces (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 255),
+    owner_id    TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    deleted_at  INTEGER
+  )`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id)`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_workspaces_active ON workspaces(deleted_at) WHERE deleted_at IS NULL`,
+  );
+
+  await db.execute(`CREATE TABLE IF NOT EXISTS workspace_memberships (
+    workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL,
+    role          TEXT NOT NULL CHECK (role IN ('owner', 'member')),
+    joined_at     INTEGER NOT NULL,
+    display_role  TEXT,
+    display_role_updated_at INTEGER,
+    deleted_at    INTEGER,
+    PRIMARY KEY (workspace_id, user_id)
+  )`);
+  await ensureColumn(db, "workspace_memberships", "display_role", "display_role TEXT");
+  await ensureColumn(
+    db,
+    "workspace_memberships",
+    "display_role_updated_at",
+    "display_role_updated_at INTEGER",
+  );
+  await ensureColumn(db, "workspace_memberships", "deleted_at", "deleted_at INTEGER");
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_wm_user ON workspace_memberships(user_id)`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_wm_active ON workspace_memberships(deleted_at) WHERE deleted_at IS NULL`,
+  );
+
+  const localWorkspaceId = await ensureLocalPersonalWorkspace(db);
+
+  await ensureColumn(
+    db,
+    "resources",
+    "workspace_id",
+    "workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE",
+  );
+  await db.execute(`UPDATE resources SET workspace_id = $1 WHERE workspace_id IS NULL`, [
+    localWorkspaceId,
+  ]);
+
+  await ensureColumn(
+    db,
+    "events",
+    "workspace_id",
+    "workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE",
+  );
+  await db.execute(
+    `UPDATE events
+        SET workspace_id = (
+          SELECT r.workspace_id FROM resources r WHERE r.id = events.resource_id LIMIT 1
+        )
+      WHERE workspace_id IS NULL`,
+  );
+  await db.execute(`UPDATE events SET workspace_id = $1 WHERE workspace_id IS NULL`, [
+    localWorkspaceId,
+  ]);
+}
+
+async function ensurePhase6CoreSchema(db: Database): Promise<void> {
+  await db.execute(`CREATE TABLE IF NOT EXISTS assignments (
+    id           TEXT PRIMARY KEY,
+    resource_id  TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    user_id      TEXT NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    deleted_at   INTEGER
+  )`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_assignments_resource  ON assignments(resource_id)`,
+  );
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_user      ON assignments(user_id)`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_assignments_workspace ON assignments(workspace_id)`,
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_assignments_active    ON assignments(deleted_at) WHERE deleted_at IS NULL`,
+  );
+
+  await db.execute(`CREATE TABLE IF NOT EXISTS profiles_cache (
+    user_id      TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    avatar_url   TEXT,
+    cached_at    INTEGER NOT NULL
+  )`);
+
+  await ensureColumn(db, "events", "user_id", "user_id TEXT");
 }
 
 async function ensureActivityLogSchema(db: Database): Promise<void> {
@@ -256,7 +421,15 @@ async function ensureOutboxAllowsActivityLog(db: Database): Promise<void> {
     `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sync_outbox' LIMIT 1`,
   );
   const sql = rows[0]?.sql ?? "";
-  if (sql.includes("'activity_log'")) return;
+  const requiredEntities = [
+    "'resource'",
+    "'event'",
+    "'workspace'",
+    "'workspace_membership'",
+    "'assignment'",
+    "'activity_log'",
+  ];
+  if (requiredEntities.every((entity) => sql.includes(entity))) return;
 
   await db.execute(`CREATE TABLE IF NOT EXISTS sync_outbox_new (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
