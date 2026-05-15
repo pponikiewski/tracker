@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { LoginPage } from "@/components/Auth/LoginPage";
 import { Sidebar, type Tab } from "@/components/Sidebar/Sidebar";
 import { WorkspaceEmptyState } from "@/components/Workspace/WorkspaceEmptyState";
@@ -27,6 +27,7 @@ function App() {
 
   // All hooks must be called unconditionally before any early returns.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const previousWorkspaceIdRef = useRef<string | null>(null);
   const workspaceLoading = useWorkspaceStore((s) => s.loading);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const memberships = useWorkspaceStore((s) => s.memberships);
@@ -44,6 +45,19 @@ function App() {
       setHasResolvedInitialWorkspaceState(true);
     }
   }, [authState.kind, workspaceLoading, syncStatus.kind]);
+
+  useEffect(() => {
+    const previousWorkspaceId = previousWorkspaceIdRef.current;
+    previousWorkspaceIdRef.current = activeWorkspaceId;
+
+    if (
+      previousWorkspaceId !== null &&
+      activeWorkspaceId !== null &&
+      previousWorkspaceId !== activeWorkspaceId
+    ) {
+      setTab("projects");
+    }
+  }, [activeWorkspaceId]);
 
   // Faza 7: open/close the per-workspace presence channel as the active
   // workspace (or auth state) changes.
@@ -66,10 +80,10 @@ function App() {
         setTab("projects");
       } else if (e.key === "2") {
         e.preventDefault();
-        setTab("dashboard");
+        setTab("history");
       } else if (e.key === "3") {
         e.preventDefault();
-        setTab("history");
+        setTab("dashboard");
       } else if (e.key === "4" && showTeamNavItem) {
         e.preventDefault();
         setTab("team");

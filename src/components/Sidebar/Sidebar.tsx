@@ -21,8 +21,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "projects", label: "Projekty", hint: "Ctrl+1", icon: FolderTree },
-  { id: "dashboard", label: "Raporty", hint: "Ctrl+2", icon: BarChart3 },
-  { id: "history", label: "Historia", hint: "Ctrl+3", icon: History },
+  { id: "history", label: "Historia", hint: "Ctrl+2", icon: History },
+  { id: "dashboard", label: "Raporty", hint: "Ctrl+3", icon: BarChart3 },
   { id: "team", label: "Zespół", hint: "Ctrl+4", icon: Users },
 ];
 
