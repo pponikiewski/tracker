@@ -4,13 +4,21 @@
  * Feature: supabase-cloud-sync, Property 3: Timestamp Conversion Round-Trip
  * Feature: supabase-cloud-sync, Property 5: Duplicate Collapse Preserves Latest
  * Feature: supabase-cloud-sync, Property 6: Exponential Backoff Bounded
- * Feature: supabase-cloud-sync, Property 7: Cloud Data Mapping Injects User ID
+ * Feature: supabase-cloud-sync, Property 7: Cloud Data Mapping Preserves Authorship
  * Feature: supabase-cloud-sync, Property 8: Invalid Timestamp Detection
  * Feature: supabase-cloud-sync, Property 12: Error Message Truncation
  */
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { collapseDuplicates, isValidTimestamp, mapToCloud, mapWorkspaceToCloud } from '../worker';
+import {
+  collapseDuplicates,
+  isValidTimestamp,
+  mapActivityLogToCloud,
+  mapEventToCloud,
+  mapResourceToCloud,
+  mapToCloud,
+  mapWorkspaceToCloud,
+} from '../worker';
 import type { Entity } from '../types';
 
 interface ReadyRow {
@@ -53,7 +61,6 @@ describe('Property 3: Timestamp Conversion Round-Trip', () => {
   it('null deleted_at remains null through conversion', () => {
     const result = mapToCloud(
       { id: 'a', created_at: 1000, updated_at: 2000, deleted_at: null },
-      'u1',
     );
     expect(result.deleted_at).toBeNull();
   });
@@ -126,26 +133,61 @@ describe('Property 6: Exponential Backoff Bounded', () => {
   });
 });
 
-// Property 7: Cloud Data Mapping Injects User ID
+// Property 7: Cloud Data Mapping Preserves Authorship
 // Validates: Requirements 7.2
-describe('Property 7: Cloud Data Mapping Injects User ID', () => {
-  it('mapToCloud always includes user_id equal to the provided userId', () => {
+describe('Property 7: Cloud Data Mapping Preserves Authorship', () => {
+  it('mapEventToCloud preserves payload user_id instead of injecting sync user id', () => {
     fc.assert(
       fc.property(
-        fc.uuid(),
         fc.record({
           id: fc.uuid(),
+          user_id: fc.uuid(),
           created_at: fc.integer({ min: 1, max: 2_000_000_000_000 }),
           updated_at: fc.integer({ min: 1, max: 2_000_000_000_000 }),
           deleted_at: fc.option(fc.integer({ min: 1, max: 2_000_000_000_000 }), { nil: null }),
         }),
-        (userId, data) => {
-          const result = mapToCloud(data as Record<string, unknown>, userId);
-          expect(result.user_id).toBe(userId);
+        (data) => {
+          const result = mapEventToCloud(data as Record<string, unknown>);
+          expect(result.user_id).toBe(data.user_id);
         },
       ),
       { numRuns: 100 },
     );
+  });
+
+  it('mapActivityLogToCloud preserves payload user_id', () => {
+    const result = mapActivityLogToCloud({
+      id: 'activity-1',
+      user_id: 'author-a',
+      created_at: 1700000000000,
+      updated_at: 1700000000000,
+      deleted_at: null,
+    });
+
+    expect(result.user_id).toBe('author-a');
+  });
+
+  it('mapResourceToCloud still injects legacy resource user_id for the syncing user', () => {
+    const resourceId = '550e8400-e29b-41d4-a716-446655440000';
+    const result = mapResourceToCloud(
+      {
+        id: resourceId,
+        workspace_id: '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+        parent_id: null,
+        name: 'Project',
+        type: 'project',
+        color: null,
+        path: resourceId,
+        cached_minutes: 0,
+        user_id: 'old-user',
+        created_at: 1700000000000,
+        updated_at: 1700000000000,
+        deleted_at: null,
+      },
+      'sync-user',
+    );
+
+    expect(result.user_id).toBe('sync-user');
   });
 });
 

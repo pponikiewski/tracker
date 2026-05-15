@@ -74,11 +74,10 @@ export function isValidTimestamp(v: unknown): boolean {
 }
 
 // Exported for property tests (Property 7)
-export function mapToCloud(data: Record<string, unknown>, userId: string): Record<string, unknown> {
+export function mapToCloud(data: Record<string, unknown>): Record<string, unknown> {
   const toIso = (v: number) => new Date(v).toISOString();
   return {
     ...data,
-    user_id: userId,
     created_at: toIso(data.created_at as number),
     updated_at: toIso(data.updated_at as number),
     deleted_at: data.deleted_at != null ? toIso(data.deleted_at as number) : null,
@@ -96,7 +95,10 @@ export function mapResourceToCloud(
   data: Record<string, unknown>,
   userId: string,
 ): Record<string, unknown> {
-  const base = mapToCloud(data, userId);
+  const base: Record<string, unknown> = {
+    ...mapToCloud(data),
+    user_id: userId,
+  };
   const rawPath = data.path;
   const mapped: Record<string, unknown> = {
     id: base.id,
@@ -116,6 +118,12 @@ export function mapResourceToCloud(
     mapped.path = pathToLtree(rawPath);
   }
   return mapped;
+}
+
+// Event author is stored in events.user_id. Preserve it when another workspace
+// member edits or syncs the row.
+export function mapEventToCloud(data: Record<string, unknown>): Record<string, unknown> {
+  return mapToCloud(data);
 }
 
 // Exported for property tests (Property 10)
@@ -141,6 +149,12 @@ export function mapAssignmentToCloud(data: Record<string, unknown>): Record<stri
     updated_at: toIso(data.updated_at as number),
     deleted_at: data.deleted_at != null ? toIso(data.deleted_at as number) : null,
   };
+}
+
+// Activity log rows carry their author in user_id; do not replace it with the
+// currently authenticated sync user.
+export function mapActivityLogToCloud(data: Record<string, unknown>): Record<string, unknown> {
+  return mapToCloud(data);
 }
 
 function validateRowTimestamps(data: Record<string, unknown>): string | null {
@@ -284,7 +298,9 @@ async function flushEntity(
           ? mapAssignmentToCloud(data)
           : entity === "resource"
             ? mapResourceToCloud(data, userId)
-            : mapToCloud(data, userId);
+            : entity === "event"
+              ? mapEventToCloud(data)
+              : mapActivityLogToCloud(data);
     toPush.push({ row, mapped });
   }
 

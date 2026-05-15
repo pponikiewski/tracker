@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collapseDuplicates, isValidTimestamp, mapToCloud } from '../worker';
+import { collapseDuplicates, isValidTimestamp, mapEventToCloud, mapToCloud } from '../worker';
 import type { Entity } from '../types';
 
 interface ReadyRow {
@@ -49,15 +49,26 @@ describe('tick guard: timestamp validation', () => {
 
 describe('tick guard: mapToCloud', () => {
   it('converts ms timestamps to ISO strings', () => {
-    const r = mapToCloud({ id: 'a', created_at: 1700000000000, updated_at: 1700000000000, deleted_at: null }, 'u1');
+    const r = mapToCloud({ id: 'a', created_at: 1700000000000, updated_at: 1700000000000, deleted_at: null });
     expect(r.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(r.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(r.deleted_at).toBeNull();
-    expect(r.user_id).toBe('u1');
   });
 
   it('converts non-null deleted_at to ISO', () => {
-    const r = mapToCloud({ id: 'a', created_at: 1, updated_at: 1, deleted_at: 1700000000000 }, 'u1');
+    const r = mapToCloud({ id: 'a', created_at: 1, updated_at: 1, deleted_at: 1700000000000 });
     expect(typeof r.deleted_at).toBe('string');
+  });
+
+  it('event mapping keeps the original author id', () => {
+    const r = mapEventToCloud({
+      id: 'event-a',
+      user_id: 'author-a',
+      created_at: 1700000000000,
+      updated_at: 1700000000000,
+      deleted_at: null,
+    });
+
+    expect(r.user_id).toBe('author-a');
   });
 });
