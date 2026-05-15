@@ -36,4 +36,18 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("recharts")) return "recharts";
+          if (id.includes("@supabase")) return "supabase";
+          if (id.includes("@tauri-apps")) return "tauri";
+          if (id.includes("react") || id.includes("scheduler")) return "react";
+          return undefined;
+        },
+      },
+    },
+  },
 }));

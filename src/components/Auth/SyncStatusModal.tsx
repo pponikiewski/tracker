@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, RefreshCcw, Trash2, X } from 'lucide-react';
 import { getDb } from '@/lib/db/connection';
 import { clearForUser, countPendingForUser, listRecentErrors, resetRetryForUser } from '@/lib/sync/outbox';
-import { tick } from '@/lib/sync/worker';
 import { useAuthStore } from '@/store/auth';
 
 interface Props {
@@ -63,6 +62,7 @@ export function SyncStatusModal({ onClose }: Props) {
   const onRetry = async () => {
     const db = await getDb();
     await resetRetryForUser(db, userId);
+    const { tick } = await import('@/lib/sync/worker');
     await tick();
     await refresh();
   };

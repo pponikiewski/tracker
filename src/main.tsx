@@ -4,8 +4,6 @@ import App from "./App";
 import "./index.css";
 import { useAuthStore, type AuthState } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
-import { startWorker, stopWorker, tick } from "@/lib/sync/worker";
-import { hasRunInitialPull, runInitialPull, resetInitialPullState } from "@/lib/sync/pull";
 import { resetUserScopedData } from "@/lib/db/connection";
 
 // localStorage key remembering which user was last seen on this machine.
@@ -43,6 +41,7 @@ async function handleUserChange(userId: string | null): Promise<boolean> {
   if (prev !== null && prev !== userId) {
     try {
       await resetUserScopedData();
+      const { resetInitialPullState } = await import("@/lib/sync/pull");
       resetInitialPullState();
       switched = true;
     } catch (err) {
@@ -68,7 +67,8 @@ async function applyAuthState(state: AuthState, prevState: AuthState | null): Pr
     const isFirstAuthed = prevState?.kind !== "authed";
     const switched = await handleUserChange(userId);
     if (serial !== authTransitionSerial) return;
-    const shouldRunInitialPull = (isFirstAuthed || switched) && !hasRunInitialPull(userId);
+    const pull = await import("@/lib/sync/pull");
+    const shouldRunInitialPull = (isFirstAuthed || switched) && !pull.hasRunInitialPull(userId);
 
     if (shouldRunInitialPull) {
       useAuthStore.getState().setSyncStatus({ kind: "initial-pull" });
@@ -79,7 +79,7 @@ async function applyAuthState(state: AuthState, prevState: AuthState | null): Pr
 
     if (shouldRunInitialPull) {
       try {
-        await runInitialPull(userId);
+        await pull.runInitialPull(userId);
       } catch (error) {
         useAuthStore.getState().setSyncStatus({
           kind: "error",
@@ -90,6 +90,7 @@ async function applyAuthState(state: AuthState, prevState: AuthState | null): Pr
     }
 
     if (isFirstAuthed || switched) {
+      const { startWorker, tick } = await import("@/lib/sync/worker");
       startWorker();
       void tick();
     }
@@ -97,6 +98,7 @@ async function applyAuthState(state: AuthState, prevState: AuthState | null): Pr
   }
 
   if (prevState?.kind === "authed") {
+    const { stopWorker } = await import("@/lib/sync/worker");
     stopWorker();
   }
   await useWorkspaceStore.getState().init(null);

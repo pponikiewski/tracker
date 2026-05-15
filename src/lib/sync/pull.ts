@@ -1,6 +1,8 @@
 import { getDb } from "@/lib/db/connection";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth";
+import { useProjects } from "@/store/projects";
+import { useWorkspaceStore } from "@/store/workspace";
 import { lwwMerge } from "./merge";
 import { enqueue } from "./outbox";
 import { recalcCachedMinutesForResource } from "@/lib/db/queries";
@@ -13,7 +15,6 @@ import type {
   WorkspaceMembership,
 } from "@/lib/db/types";
 import { ltreeToPath } from "@/lib/utils/ltree";
-import { tick } from "./worker";
 
 const pulledForUser = new Set<string>();
 
@@ -740,7 +741,6 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       aMerge.writeSqlite.length > 0;
 
     if (wsChanged) {
-      const { useWorkspaceStore } = await import("@/store/workspace");
       await useWorkspaceStore.getState().refresh();
       const workspaceState = useWorkspaceStore.getState();
       const activeWorkspaceStillExists =
@@ -751,7 +751,6 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       }
     }
     if (projectsChanged) {
-      const { useProjects } = await import("@/store/projects");
       await useProjects.getState().refresh({ showLoading: false });
     }
     if (actMerge.writeSqlite.length > 0 && typeof window !== "undefined") {
@@ -763,5 +762,6 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
   auth.setLastSyncAt(Date.now());
 
   // Drain newly enqueued local-wins
+  const { tick } = await import("./worker");
   void tick();
 }
