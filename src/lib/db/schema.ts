@@ -223,3 +223,19 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_user
 CREATE INDEX IF NOT EXISTS idx_activity_log_active
   ON activity_log(deleted_at) WHERE deleted_at IS NULL;
 `;
+
+/**
+ * Local performance indexes for workspace-scoped dashboard/history/team queries.
+ * Applied after Phase 5/6 migrations because the base MVP schema does not have
+ * `workspace_id` or `events.user_id`.
+ */
+export const WORKSPACE_QUERY_INDEXES_SQL = `
+CREATE INDEX IF NOT EXISTS idx_resources_workspace_active_path
+  ON resources(workspace_id, deleted_at, path);
+
+CREATE INDEX IF NOT EXISTS idx_events_workspace_date_active
+  ON events(workspace_id, date, deleted_at);
+
+CREATE INDEX IF NOT EXISTS idx_events_workspace_user_date_active
+  ON events(workspace_id, user_id, date, deleted_at);
+`;

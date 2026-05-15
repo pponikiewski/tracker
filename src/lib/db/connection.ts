@@ -1,5 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
-import { ACTIVITY_LOG_SQL, SCHEMA_SQL } from "./schema";
+import { ACTIVITY_LOG_SQL, SCHEMA_SQL, WORKSPACE_QUERY_INDEXES_SQL } from "./schema";
 
 const DB_URL = "sqlite:tracker.db";
 
@@ -235,6 +235,7 @@ export async function getDb(): Promise<Database> {
   await ensureOutboxUserIdColumn(db);
   await ensureActivityLogSchema(db);
   await ensureOutboxAllowsActivityLog(db);
+  await ensureWorkspaceQueryIndexes(db);
   await purgeLocalOutboxRows(db);
   await purgeLegacyResourceSortOrderFromOutbox(db);
   cached = db;
@@ -276,6 +277,15 @@ async function ensureOutboxAllowsActivityLog(db: Database): Promise<void> {
   await db.execute(`DROP TABLE sync_outbox`);
   await db.execute(`ALTER TABLE sync_outbox_new RENAME TO sync_outbox`);
   await db.execute(`CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at)`);
+}
+
+async function ensureWorkspaceQueryIndexes(db: Database): Promise<void> {
+  const statements = WORKSPACE_QUERY_INDEXES_SQL.split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const statement of statements) {
+    await db.execute(statement);
+  }
 }
 
 async function ensureMembershipDisplayRoleColumns(db: Database): Promise<void> {
