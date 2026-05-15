@@ -27,12 +27,12 @@ async function ensureColumn(
  *
  * Checks whether the `workspace_id` column already exists in the `resources`
  * table via PRAGMA table_info. If it does, the migration has already been
- * applied and we skip it. Otherwise we execute every DDL/DML statement in a
- * single SQLite transaction.
+ * applied and we skip it. Otherwise we execute every DDL/DML statement
+ * sequentially.
  *
  * SCHEMA_V5_SQL contains multiple statements separated by semicolons. Because
  * the Tauri SQL plugin executes one statement per call we split the constant
- * into individual statements and run them one by one inside the transaction.
+ * into individual statements and run them one by one.
  */
 export async function runPhase5Migration(db: Database): Promise<void> {
   // Check idempotency: does workspace_id already exist in resources?

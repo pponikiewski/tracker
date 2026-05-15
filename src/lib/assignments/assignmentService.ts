@@ -59,8 +59,8 @@ async function assertWorkspaceMember(
  * If a soft-deleted assignment exists for the same pair, it is restored
  * (deleted_at set to NULL, updated_at refreshed) so the record is active again.
  *
- * Both the SQLite write and the outbox enqueue happen inside a single
- * transaction so they are atomic.
+ * The SQLite write and outbox enqueue are serialized together. This flow still
+ * uses the legacy TS boundary and is not yet a true SQLite transaction.
  *
  * Requirements: 5.1, 5.2, 5.4, 5.8, 9.1, 9.5
  */
@@ -173,8 +173,8 @@ export async function createAssignment(
  * Idempotent — if no active assignment exists for the `(resource_id, user_id)`
  * pair, the function returns without error.
  *
- * Both the SQLite write and the outbox enqueue happen inside a single
- * transaction so they are atomic.
+ * The SQLite write and outbox enqueue are serialized together. This flow still
+ * uses the legacy TS boundary and is not yet a true SQLite transaction.
  *
  * Requirements: 5.3, 5.8, 9.1, 9.5
  */

@@ -37,6 +37,35 @@ $$;
 
 GRANT EXECUTE ON FUNCTION is_workspace_member(UUID, UUID) TO authenticated;
 
+CREATE OR REPLACE FUNCTION shares_workspace_with(p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT auth.uid() IS NOT NULL
+    AND (
+      p_user_id = auth.uid()
+      OR EXISTS (
+        SELECT 1
+        FROM workspace_memberships self_membership
+        JOIN workspace_memberships other_membership
+          ON other_membership.workspace_id = self_membership.workspace_id
+        JOIN workspaces shared_workspace
+          ON shared_workspace.id = self_membership.workspace_id
+        WHERE self_membership.user_id = auth.uid()
+          AND self_membership.deleted_at IS NULL
+          AND other_membership.user_id = p_user_id
+          AND other_membership.deleted_at IS NULL
+          AND shared_workspace.deleted_at IS NULL
+      )
+    );
+$$;
+
+REVOKE ALL ON FUNCTION shares_workspace_with(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION shares_workspace_with(UUID) TO authenticated;
+
 
 -- ---------------------------------------------------------------------------
 -- 1. workspaces
@@ -208,6 +237,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "shared_workspace_read" ON profiles;
+DROP POLICY IF EXISTS "profiles_select_authenticated" ON profiles;
+DROP POLICY IF EXISTS "profiles_select_shared_workspace" ON profiles;
 DROP POLICY IF EXISTS "owner_insert"          ON profiles;
 DROP POLICY IF EXISTS "owner_update"          ON profiles;
 
@@ -217,17 +248,9 @@ CREATE POLICY "owner_insert" ON profiles
 CREATE POLICY "owner_update" ON profiles
   FOR UPDATE USING (auth.uid() = user_id);
 
-CREATE POLICY "shared_workspace_read" ON profiles
+CREATE POLICY "profiles_select_shared_workspace" ON profiles
   FOR SELECT
-  USING (
-    auth.uid() = user_id
-    OR EXISTS (
-      SELECT 1 FROM workspace_memberships wm1
-      JOIN workspace_memberships wm2 ON wm1.workspace_id = wm2.workspace_id
-      WHERE wm1.user_id = auth.uid()
-        AND wm2.user_id = profiles.user_id
-    )
-  );
+  USING (shares_workspace_with(user_id));
 
 
 -- ---------------------------------------------------------------------------

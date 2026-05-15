@@ -1,10 +1,12 @@
 import { getDb } from "./connection";
-import { canParent, type Resource, type ResourceType, type TimeEvent } from "./types";
-import { buildPath, isDescendantPath, parentPath } from "../utils/tree";
+import { type Resource, type ResourceType, type TimeEvent } from "./types";
+import { buildPath, parentPath } from "../utils/tree";
 import { newId } from "../utils/uuid";
 import { enqueue } from "@/lib/sync/outbox";
 import { withTx } from "./tx";
 import { recordActivity } from "@/lib/activity/activityLog";
+import { useAuthStore } from "@/store/auth";
+import { createEventTx, moveResourceTx } from "@/lib/tauri/domainCommands";
 
 const now = () => Date.now();
 
@@ -162,93 +164,15 @@ export async function setResourceColor(id: string, color: string | null): Promis
  * Use newParentId=null to make `id` a top-level project (changes type to 'project').
  */
 export async function moveResource(id: string, newParentId: string | null): Promise<void> {
-  await withTx(async (db) => {
-    const node = await getResource(id);
-    if (!node) throw new Error("Resource not found");
-    if (node.parent_id === newParentId) return; // no-op
-
-    const newType: ResourceType = node.type; // type is fixed at creation — move never changes it
-    let newPathPrefix = "";
-
-    if (newParentId === null) {
-      if (node.type !== "project") {
-        throw new Error("Tylko projekt może być na najwyższym poziomie");
-      }
-    } else {
-      const parent = await getResource(newParentId);
-      if (!parent) throw new Error("New parent not found");
-      if (isDescendantPath(node.path, parent.path)) {
-        throw new Error("Nie można przenieść węzła pod jego własne dziecko");
-      }
-      if (!canParent(parent.type, node.type)) {
-        throw new Error(`Typ ${node.type} nie może być dzieckiem ${parent.type}`);
-      }
-      newPathPrefix = `${parent.path}/`;
-    }
-
-    const newPath = `${newPathPrefix}${id}`;
-    const ts = now();
-
-    // Collect descendant ids BEFORE path rewrite (Req 5.6)
-    const descendants = await db.select<{ id: string }[]>(
-      "SELECT id FROM resources WHERE path LIKE $1",
-      [`${node.path}/%`],
-    );
-
-    await db.execute(
-      "UPDATE resources SET parent_id = $1, type = $2, path = $3, updated_at = $4 WHERE id = $5",
-      [newParentId, newType, newPath, ts, id],
-    );
-    await rewriteDescendantPaths(node.path, newPath);
-
-    // Recalculate cached_minutes for both old and new ancestor chains.
-    await recalcAncestorChain(node.path);
-    await recalcAncestorChain(newPath);
-
-    // Enqueue self + every descendant (Req 5.6)
-    const affectedIds = [id, ...descendants.map((d) => d.id)];
-    for (const rid of affectedIds) {
-      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
-      if (rows[0])
-        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
-    }
-
-    const moved = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
-    if (moved[0]) {
-      await recordActivity(db, {
-        workspaceId: moved[0].workspace_id,
-        action: "resource.move",
-        entityType: "resource",
-        entityId: id,
-        entityName: moved[0].name,
-        summary: `Przeniesiono "${moved[0].name}"`,
-        metadata: { from_parent_id: node.parent_id, to_parent_id: newParentId },
-      });
-    }
+  const authState = useAuthStore.getState().state;
+  const userId = authState.kind === "authed" ? authState.user.id : null;
+  await moveResourceTx({
+    id,
+    newParentId,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    userId,
   });
-}
-
-/**
- * Re-aggregate cached_minutes for every ancestor in the given path (and self).
- */
-async function recalcAncestorChain(path: string): Promise<void> {
-  const db = await getDb();
-  const ids = path.split("/");
-  for (const id of ids) {
-    const target = await getResource(id);
-    if (!target) continue;
-    const rows = await db.select<{ total: number | null }[]>(
-      `SELECT COALESCE(SUM(e.minutes), 0) as total
-       FROM events e
-       JOIN resources r ON r.id = e.resource_id
-       WHERE (r.path = $1 OR r.path LIKE $2)
-         AND e.deleted_at IS NULL
-         AND r.deleted_at IS NULL`,
-      [target.path, `${target.path}/%`],
-    );
-    const total = rows[0]?.total ?? 0;
-    await db.execute("UPDATE resources SET cached_minutes = $1 WHERE id = $2", [total, id]);
-  }
 }
 
 /** Soft-delete the resource and all descendants by path prefix. */
@@ -460,52 +384,23 @@ export interface CreateEventInput {
 }
 
 export async function createEvent(input: CreateEventInput): Promise<string> {
-  return withTx(async (db) => {
-    const id = input.id ?? newId();
-    const ts = input.timestamp ?? now();
-    await db.execute(
-      `INSERT INTO events
-         (id, resource_id, date, minutes, goal, topics, notes, report, workspace_id, user_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
-      [
-        id,
-        input.resourceId,
-        input.date,
-        input.minutes,
-        input.goal ?? null,
-        input.topics ?? null,
-        input.notes ?? null,
-        input.report ?? null,
-        input.workspaceId,
-        input.userId ?? null,
-        ts,
-      ],
-    );
-    await recalcCachedMinutesForResource(input.resourceId);
-
-    // Enqueue the event only (recalcCachedMinutesForResource does NOT bump updated_at on resources)
-    const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
-    if (rows[0]) {
-      await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
-    }
-
-    const resources = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [
-      input.resourceId,
-    ]);
-    const resourceName = resources[0]?.name ?? input.resourceId;
-    await recordActivity(db, {
-      workspaceId: input.workspaceId,
-      action: "event.create",
-      entityType: "event",
-      entityId: id,
-      entityName: resourceName,
-      summary: `Zalogowano ${input.minutes} min do "${resourceName}"`,
-      metadata: { resource_id: input.resourceId, date: input.date, minutes: input.minutes },
-      timestamp: ts,
-    });
-
-    return id;
+  const id = input.id ?? newId();
+  const ts = input.timestamp ?? now();
+  await createEventTx({
+    id,
+    resourceId: input.resourceId,
+    date: input.date,
+    minutes: input.minutes,
+    goal: input.goal ?? null,
+    topics: input.topics ?? null,
+    notes: input.notes ?? null,
+    report: input.report ?? null,
+    workspaceId: input.workspaceId,
+    userId: input.userId ?? null,
+    timestamp: ts,
+    activityId: crypto.randomUUID(),
   });
+  return id;
 }
 
 export async function getEvent(id: string): Promise<TimeEvent | null> {

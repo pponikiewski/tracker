@@ -3,6 +3,7 @@ import type { Workspace, WorkspaceMembership } from "./types";
 import { enqueue } from "@/lib/sync/outbox";
 import { withTx } from "./tx";
 import { recordActivity } from "@/lib/activity/activityLog";
+import { createWorkspaceTx } from "@/lib/tauri/domainCommands";
 
 const now = () => Date.now();
 
@@ -57,10 +58,11 @@ export async function upsertWorkspaceLocal(workspace: Workspace): Promise<void> 
   );
 }
 
-// ---- Mutations (each in a single transaction) ----
+// ---- Mutations ----
 
 /**
- * Creates a new workspace and its owner membership in a single transaction.
+ * Creates a new workspace and its owner membership through a Rust command
+ * backed by sqlx::Transaction.
  * Enqueues both the workspace and the membership for sync.
  * Requirements: 1.9, 3.1, 7.1, 7.2
  */
@@ -69,65 +71,13 @@ export async function createWorkspace(input: {
   name: string;
   ownerId: string;
 }): Promise<void> {
-  await withTx(async (db) => {
-    const ts = now();
-
-    await db.execute(
-      `INSERT INTO workspaces (id, name, owner_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $4)`,
-      [input.id, input.name, input.ownerId, ts],
-    );
-
-    await db.execute(
-      `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
-       VALUES ($1, $2, 'owner', $3)`,
-      [input.id, input.ownerId, ts],
-    );
-
-    const workspaceRow: Workspace = {
-      id: input.id,
-      name: input.name,
-      owner_id: input.ownerId,
-      created_at: ts,
-      updated_at: ts,
-      deleted_at: null,
-    };
-
-    const membershipRow: WorkspaceMembership = {
-      workspace_id: input.id,
-      user_id: input.ownerId,
-      role: "owner",
-      joined_at: ts,
-      display_role: null,
-      display_role_updated_at: null,
-      deleted_at: null,
-    };
-
-    await enqueue(
-      db,
-      "workspace",
-      input.id,
-      "upsert",
-      workspaceRow as unknown as Record<string, unknown>,
-    );
-    await enqueue(
-      db,
-      "workspace_membership",
-      `${input.id}:${input.ownerId}`,
-      "upsert",
-      membershipRow as unknown as Record<string, unknown>,
-    );
-
-    await recordActivity(db, {
-      workspaceId: input.id,
-      action: "workspace.create",
-      entityType: "workspace",
-      entityId: input.id,
-      entityName: input.name,
-      summary: `Utworzono workspace "${input.name}"`,
-      metadata: { owner_id: input.ownerId },
-      timestamp: ts,
-    });
+  const ts = now();
+  await createWorkspaceTx({
+    id: input.id,
+    name: input.name,
+    ownerId: input.ownerId,
+    timestamp: ts,
+    activityId: crypto.randomUUID(),
   });
 }
 
