@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useProjects } from "@/store/projects";
 import { useWorkspaceStore } from "@/store/workspace";
+import { useAssignmentStore } from "@/store/assignments";
 import { usePresenceStore } from "@/store/presence";
 import { useTreeUiStore } from "@/store/treeUi";
 import { TreeView } from "./Tree/TreeView";
@@ -65,6 +66,8 @@ export function ProjectsView() {
   const logTime = useProjects((s) => s.logTime);
 
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const memberships = useWorkspaceStore((s) => s.memberships);
+  const loadAssignments = useAssignmentStore((s) => s.loadAssignments);
 
   const selectedId = useTreeUiStore((s) => s.selectedId);
   const renamingId = useTreeUiStore((s) => s.renamingId);
@@ -83,6 +86,12 @@ export function ProjectsView() {
   useEffect(() => {
     void refresh();
   }, [refresh, activeWorkspaceId]);
+
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      void loadAssignments(activeWorkspaceId);
+    }
+  }, [activeWorkspaceId, loadAssignments]);
 
   useEffect(() => {
     setDimmedIdsStore(new Set());
@@ -369,6 +378,19 @@ export function ProjectsView() {
       label: "Zmień kolor (K)",
       onClick: () => setColorTargetId(node.id),
     });
+
+    const workspaceMemberCount = activeWorkspaceId
+      ? memberships.filter((m) => m.workspace_id === activeWorkspaceId && m.deleted_at === null)
+          .length
+      : 0;
+    if (activeWorkspaceId && workspaceMemberCount > 1) {
+      items.push({
+        label: "Przypisz osoby",
+        assignAction: true,
+        resourceId: node.id,
+        workspaceId: activeWorkspaceId,
+      });
+    }
 
     const childType = defaultChildType(node.type);
     const canAddTask = canParent(node.type, "task");

@@ -266,9 +266,7 @@ export async function listAssignments(workspaceId: string): Promise<Assignment[]
  * soft-deleting a resource subtree) — accepts a `db` instance and a
  * timestamp `ts` so the caller controls the transaction boundary.
  *
- * Does NOT enqueue outbox entries — the caller is responsible for enqueueing
- * the resource soft-delete, which implicitly covers cascading assignment
- * soft-deletes via the sync worker's pull/merge logic.
+ * Enqueues each soft-deleted assignment so the change propagates to Supabase.
  *
  * Requirements: 5.7
  */
@@ -277,12 +275,34 @@ export async function softDeleteAssignmentsForResource(
   resourceId: string,
   ts: number,
 ): Promise<void> {
+  const active = await db.select<Array<{ id: string }>>(
+    `SELECT id FROM assignments
+     WHERE resource_id = $1 AND deleted_at IS NULL`,
+    [resourceId],
+  );
+  if (active.length === 0) return;
+
   await db.execute(
     `UPDATE assignments
      SET deleted_at = $1, updated_at = $1
      WHERE resource_id = $2 AND deleted_at IS NULL`,
     [ts, resourceId],
   );
+
+  for (const { id } of active) {
+    const updated = await db.select<Assignment[]>("SELECT * FROM assignments WHERE id = $1", [
+      id,
+    ]);
+    if (updated[0]) {
+      await enqueue(
+        db,
+        "assignment",
+        id,
+        "upsert",
+        updated[0] as unknown as Record<string, unknown>,
+      );
+    }
+  }
 }
 
 /**

@@ -7,6 +7,7 @@ import { withTx } from "./tx";
 import { recordActivity } from "@/lib/activity/activityLog";
 import { useAuthStore } from "@/store/auth";
 import { createEventTx, moveResourceTx } from "@/lib/tauri/domainCommands";
+import { softDeleteAssignmentsForResource } from "@/lib/assignments/assignmentService";
 
 const now = () => Date.now();
 
@@ -206,6 +207,9 @@ export async function softDeleteSubtree(id: string): Promise<void> {
        )`,
       [ts, r.path, `${r.path}/%`],
     );
+    for (const { id: rid } of resourceIds) {
+      await softDeleteAssignmentsForResource(db, rid, ts);
+    }
 
     // Enqueue each affected resource (op='upsert' per Req 5.4)
     for (const { id: rid } of resourceIds) {

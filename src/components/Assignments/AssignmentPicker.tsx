@@ -130,6 +130,7 @@ export function AssignmentPicker({
       ref={ref}
       role="dialog"
       aria-label="Przypisz członków"
+      onMouseDown={(e) => e.stopPropagation()}
       className="min-w-[220px] rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-2xl"
       style={positionStyle}
     >

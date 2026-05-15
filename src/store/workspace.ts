@@ -13,6 +13,7 @@ import { useAssignmentStore } from "@/store/assignments";
 import { useAuthStore } from "@/store/auth";
 import { useProfileStore } from "@/store/profile";
 import { recordActivityEntry } from "@/lib/activity/activityLog";
+import { softDeleteAssignmentsForUser } from "@/lib/assignments/assignmentService";
 
 // ---- Validation helpers ----
 
@@ -323,6 +324,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
       // Then mirror the tombstone in local SQLite and outbox.
       await workspaceQueries.deleteMembership(workspaceId, userId);
+      await softDeleteAssignmentsForUser(workspaceId, userId);
+      await useAssignmentStore.getState().loadAssignments(workspaceId);
 
       // Refresh memberships
       await get().refresh();
