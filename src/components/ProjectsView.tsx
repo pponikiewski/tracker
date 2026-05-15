@@ -439,8 +439,8 @@ export function ProjectsView() {
         return;
       }
       if (!selectedId) return;
-      // F2 or Enter → rename selected
-      if (e.key === "F2" || (e.key === "Enter" && !mod)) {
+      // N or Enter → rename selected
+      if (!mod && (e.key.toLowerCase() === "n" || e.key === "Enter")) {
         e.preventDefault();
         setRenamingId(selectedId);
         return;
@@ -461,8 +461,8 @@ export function ProjectsView() {
         }
         return;
       }
-      // F3 → change color
-      if (e.key === "F3") {
+      // K → change color
+      if (!mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setColorTargetId(selectedId);
         return;
@@ -506,14 +506,14 @@ export function ProjectsView() {
       onClick: () => setLogWorkResource(node),
     });
     items.push({
-      label: "Zmień nazwę (F2)",
+      label: "Zmień nazwę (N)",
       onClick: () => setRenamingId(node.id),
     });
 
     items.push({ separator: true });
 
     items.push({
-      label: "Zmień kolor (F3)",
+      label: "Zmień kolor (K)",
       onClick: () => setColorTargetId(node.id),
     });
 
