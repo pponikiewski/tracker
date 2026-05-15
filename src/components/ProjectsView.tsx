@@ -7,7 +7,7 @@ import { useAuthStore } from "@/store/auth";
 import { usePresenceStore } from "@/store/presence";
 import { useTreeUiStore } from "@/store/treeUi";
 import { TreeView } from "./Tree/TreeView";
-import { ContextMenu, type MenuEntry, type AssignMenuItem } from "./ContextMenu";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { ColorPickerModal } from "./ColorPickerModal";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { LogWorkModal } from "./LogWorkModal";
@@ -459,6 +459,31 @@ export function ProjectsView() {
           e.preventDefault();
           setLogWorkResource(r);
         }
+        return;
+      }
+      // F3 → change color
+      if (e.key === "F3") {
+        e.preventDefault();
+        setColorTargetId(selectedId);
+        return;
+      }
+      // E → add the next hierarchy level when there is one
+      if (!mod && e.key.toLowerCase() === "e") {
+        const r = findResource(selectedId);
+        const childType = r ? defaultChildType(r.type) : null;
+        if (childType && childType !== "task") {
+          e.preventDefault();
+          openAddChildPrompt(selectedId, childType);
+        }
+        return;
+      }
+      // Z → add a task
+      if (!mod && e.key.toLowerCase() === "z") {
+        const r = findResource(selectedId);
+        if (r && canParent(r.type, "task")) {
+          e.preventDefault();
+          openAddChildPrompt(selectedId, "task");
+        }
       }
     };
     document.addEventListener("keydown", onKey);
@@ -477,7 +502,7 @@ export function ProjectsView() {
 
     const items: MenuEntry[] = [];
     items.push({
-      label: "Loguj czas... (L)",
+      label: "Loguj czas (L)",
       onClick: () => setLogWorkResource(node),
     });
     items.push({
@@ -485,60 +510,46 @@ export function ProjectsView() {
       onClick: () => setRenamingId(node.id),
     });
 
-    // "Assign members" — only available in non-local workspaces (Requirement 5.10)
-    if (!isLocalWorkspace && activeWorkspaceId) {
-      const assignItem: AssignMenuItem = {
-        label: "Przypisz członków",
-        assignAction: true,
-        resourceId: node.id,
-        workspaceId: activeWorkspaceId,
-      };
-      items.push(assignItem);
-    }
-
     items.push({ separator: true });
 
     items.push({
-      label: "Zmień kolor...",
+      label: "Zmień kolor (F3)",
       onClick: () => setColorTargetId(node.id),
     });
-    if (node.color !== null) {
-      items.push({
-        label: "Wyczyść kolor (dziedzicz)",
-        onClick: () => void changeColor(node.id, null),
-      });
-    }
 
     const childType = defaultChildType(node.type);
-    if (childType) {
+    const canAddTask = canParent(node.type, "task");
+    if (childType !== "task" || canAddTask) {
       items.push({ separator: true });
+    }
+    if (childType !== "task") {
       items.push({
-        label: `Dodaj ${TYPE_LABEL[childType]}`,
+        label: `Dodaj ${TYPE_LABEL[childType].toLowerCase()} (E)`,
         onClick: () => openAddChildPrompt(node.id, childType),
       });
-      if (childType !== "task" && (node.type === "project" || node.type === "stage")) {
-        items.push({
-          label: "Dodaj Zadanie (skrót)",
-          onClick: () => openAddChildPrompt(node.id, "task"),
-        });
-      }
+    }
+    if (canAddTask) {
+      items.push({
+        label: "Dodaj zadanie (Z)",
+        onClick: () => openAddChildPrompt(node.id, "task"),
+      });
     }
 
     items.push({ separator: true });
 
     if (node.type === "project") {
       items.push({
-        label: "Zostaw podległe jako projekty",
+        label: `Usuń ${TYPE_LABEL[node.type].toLowerCase()}`,
         onClick: () => void detachAsProjects(node.id),
       });
     } else {
       items.push({
-        label: "Usuń, przypisz podległe wyżej",
+        label: `Usuń ${TYPE_LABEL[node.type].toLowerCase()}`,
         onClick: () => void liftAndDelete(node.id),
       });
     }
     items.push({
-      label: "Usuń wraz z podległymi (Delete)",
+      label: "Usuń wszystko (Delete)",
       danger: true,
       onClick: () => void deleteSubtree(node.id),
     });
