@@ -301,8 +301,8 @@ export function ProjectsView() {
     const source = findResource(sourceId);
     if (!source) return false;
     if (targetId === null) {
-      // Dropping at root area = make project.
-      return source.type !== "project" || source.parent_id !== null;
+      // Only a project may live at the top level.
+      return source.type === "project";
     }
     if (sourceId === targetId) return false;
     const target = findResource(targetId);
