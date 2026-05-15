@@ -27,6 +27,10 @@ export function resetInitialPullState(): void {
   pulledForUser.clear();
 }
 
+export function hasRunInitialPull(userId: string): boolean {
+  return pulledForUser.has(userId);
+}
+
 const toMs = (v: unknown): number => (typeof v === "string" ? Date.parse(v) : (v as number));
 
 function cloudToLocalResource(c: Record<string, unknown>): Resource {
@@ -717,8 +721,6 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
 
   // Req 8.1: mark as pulled for this process session only after success
   if (isInitial) pulledForUser.add(userId);
-  auth.setSyncStatus({ kind: "idle" });
-  auth.setLastSyncAt(Date.now());
 
   if (isInitial || hasPulledUiChanges) {
     // Reload UI only after real local changes. Incremental pulls with no new
@@ -754,6 +756,9 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       window.dispatchEvent(new CustomEvent("tracker:activity-log-changed"));
     }
   }
+
+  auth.setSyncStatus({ kind: "idle" });
+  auth.setLastSyncAt(Date.now());
 
   // Drain newly enqueued local-wins
   void tick();

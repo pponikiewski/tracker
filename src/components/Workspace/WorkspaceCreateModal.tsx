@@ -24,10 +24,6 @@ export function WorkspaceCreateModal({ onClose }: WorkspaceCreateModalProps) {
     if (nameError) setNameError(validateName(e.target.value));
   };
 
-  const handleNameBlur = () => {
-    setNameError(validateName(name));
-  };
-
   const isNameValid = validateName(name) === null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,7 +56,6 @@ export function WorkspaceCreateModal({ onClose }: WorkspaceCreateModalProps) {
               placeholder="Nazwa workspace"
               value={name}
               onChange={handleNameChange}
-              onBlur={handleNameBlur}
               maxLength={100}
               className={`w-full bg-neutral-800 border rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none transition-colors ${
                 nameError

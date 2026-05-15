@@ -13,7 +13,7 @@ export function WorkspaceEmptyState() {
         <span className="mr-auto text-xs font-semibold tracking-tight text-neutral-100">
           tracker
         </span>
-        <AuthGate />
+        <AuthGate menuPlacement="bottom-end" />
       </nav>
 
       <main className="flex flex-1 items-center justify-center px-6">

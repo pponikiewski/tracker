@@ -23,6 +23,14 @@ const HistoryView = lazy(() =>
   import("./components/History/HistoryView").then((m) => ({ default: m.HistoryView })),
 );
 
+function AppLoadingScreen() {
+  return (
+    <div className="flex h-full items-center justify-center bg-neutral-950">
+      <span className="text-sm text-neutral-500">Ładowanie...</span>
+    </div>
+  );
+}
+
 function App() {
   const [tab, setTab] = useState<Tab>("projects");
   const [hasResolvedInitialWorkspaceState, setHasResolvedInitialWorkspaceState] = useState(false);
@@ -102,11 +110,7 @@ function App() {
 
   // Show full-screen spinner while Supabase session is being resolved.
   if (authState.kind === "loading") {
-    return (
-      <div className="flex h-full items-center justify-center bg-neutral-950">
-        <span className="text-sm text-neutral-500">Ładowanie...</span>
-      </div>
-    );
+    return <AppLoadingScreen />;
   }
 
   // Show login page when not authenticated.
@@ -115,18 +119,13 @@ function App() {
   }
 
   const visibleWorkspaces = workspaces.filter((w) => w.deleted_at === null);
-  const isResolvingCloudWorkspace =
+  const isResolvingWorkspace =
     authState.kind === "authed" &&
-    (workspaceLoading || isInitialPull) &&
-    visibleWorkspaces.length === 0 &&
-    activeWorkspaceId === null;
+    ((!hasResolvedInitialWorkspaceState && (workspaceLoading || isInitialPull)) ||
+      (visibleWorkspaces.length > 0 && activeWorkspaceId === null));
 
-  if (isResolvingCloudWorkspace) {
-    return (
-      <div className="flex h-full items-center justify-center bg-neutral-950">
-        <span className="text-sm text-neutral-500">Ładowanie workspace...</span>
-      </div>
-    );
+  if (isResolvingWorkspace) {
+    return <AppLoadingScreen />;
   }
 
   if (

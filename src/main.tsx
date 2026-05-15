@@ -2,10 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { useAuthStore } from "@/store/auth";
+import { useAuthStore, type AuthState } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
 import { startWorker, stopWorker, tick } from "@/lib/sync/worker";
-import { runInitialPull, resetInitialPullState } from "@/lib/sync/pull";
+import { hasRunInitialPull, runInitialPull, resetInitialPullState } from "@/lib/sync/pull";
 import { resetUserScopedData } from "@/lib/db/connection";
 
 // localStorage key remembering which user was last seen on this machine.
@@ -53,42 +53,63 @@ async function handleUserChange(userId: string | null): Promise<boolean> {
   return switched;
 }
 
-void useAuthStore.getState().init();
+let authTransitionSerial = 0;
 
-// Req 2.5, 4.3, 4.4: initialise WorkspaceStore after auth init
-{
-  const authState = useAuthStore.getState().state;
-  if (authState.kind === 'authed') {
-    void handleUserChange(authState.user.id).then(() =>
-      useWorkspaceStore.getState().init(authState.user.id),
-    );
-  } else {
-    void useWorkspaceStore.getState().init(null);
+async function applyAuthState(state: AuthState, prevState: AuthState | null): Promise<void> {
+  if (state.kind === "loading") return;
+  if (state.kind === "authed" && prevState?.kind === "authed") {
+    if (state.user.id === prevState.user.id) return;
   }
+
+  const serial = ++authTransitionSerial;
+
+  if (state.kind === "authed") {
+    const userId = state.user.id;
+    const isFirstAuthed = prevState?.kind !== "authed";
+    const switched = await handleUserChange(userId);
+    if (serial !== authTransitionSerial) return;
+    const shouldRunInitialPull = (isFirstAuthed || switched) && !hasRunInitialPull(userId);
+
+    if (shouldRunInitialPull) {
+      useAuthStore.getState().setSyncStatus({ kind: "initial-pull" });
+    }
+
+    await useWorkspaceStore.getState().init(userId);
+    if (serial !== authTransitionSerial) return;
+
+    if (shouldRunInitialPull) {
+      try {
+        await runInitialPull(userId);
+      } catch (error) {
+        useAuthStore.getState().setSyncStatus({
+          kind: "error",
+          message: error instanceof Error ? error.message : "initial pull failed",
+        });
+      }
+      if (serial !== authTransitionSerial) return;
+    }
+
+    if (isFirstAuthed || switched) {
+      startWorker();
+      void tick();
+    }
+    return;
+  }
+
+  if (prevState?.kind === "authed") {
+    stopWorker();
+  }
+  await useWorkspaceStore.getState().init(null);
 }
 
 // Req 8.1, 15.1, 15.2: run initial pull on first authed transition or after
 // user switch (so the freshly wiped local SQLite gets re-populated from cloud
 // for the new account).
 useAuthStore.subscribe((s, prev) => {
-  if (s.state.kind === 'authed') {
-    const userId = s.state.user.id;
-    const isFirstAuthed = prev.state.kind !== 'authed';
-    void handleUserChange(userId).then(async (switched) => {
-      await useWorkspaceStore.getState().init(userId);
-      if (isFirstAuthed || switched) {
-        await runInitialPull(userId);
-        startWorker();
-        void tick();
-      }
-    });
-  } else if (s.state.kind === 'anonymous') {
-    void useWorkspaceStore.getState().init(null);
-    if (prev.state.kind === 'authed') {
-      stopWorker();
-    }
-  }
+  void applyAuthState(s.state, prev.state);
 });
+
+void useAuthStore.getState().init();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

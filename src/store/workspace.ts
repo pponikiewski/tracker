@@ -131,7 +131,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     workspaces: [],
     memberships: [],
     activeWorkspaceId: null,
-    loading: false,
+    loading: true,
     error: null,
 
     // ---- Selectors ----
@@ -152,7 +152,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     // ---- init ----
 
     init: async (userId: string | null) => {
-      set({ loading: true, error: null });
+      set({
+        loading: true,
+        error: null,
+        activeWorkspaceId: userId ? null : get().activeWorkspaceId,
+      });
       try {
         if (userId === null) {
           // Anonymous mode: use Local_Personal_Workspace
@@ -167,7 +171,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
             (w) => w.owner_id !== "local",
           );
           const memberships = await workspaceQueries.getUserMemberships(userId);
-          set({ workspaces, memberships, loading: false });
+          set({ workspaces, memberships, activeWorkspaceId: null, loading: false });
           await get().restoreActiveWorkspace(userId);
         }
       } catch (e) {

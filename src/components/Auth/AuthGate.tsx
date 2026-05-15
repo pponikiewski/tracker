@@ -5,12 +5,22 @@ import { AuthModal } from './AuthModal';
 import { ProfileSettingsPanel } from '@/components/Profile/ProfileSettingsPanel';
 import { supabase } from '@/lib/supabase';
 
-export function AuthGate() {
+type MenuPlacement = 'top' | 'bottom-end';
+
+interface AuthGateProps {
+  menuPlacement?: MenuPlacement;
+}
+
+export function AuthGate({ menuPlacement = 'top' }: AuthGateProps) {
   const state = useAuthStore((s) => s.state);
   const signOut = useAuthStore((s) => s.signOut);
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const menuPositionClass =
+    menuPlacement === 'bottom-end'
+      ? 'right-0 top-full mt-1 w-56'
+      : 'bottom-full left-0 mb-1 w-full min-w-40';
 
   // Req 1.2: hide entirely when supabase client is null (env vars missing)
   if (!supabase) return null;
@@ -52,7 +62,7 @@ export function AuthGate() {
       {menuOpen && (
         <div
           role="menu"
-          className="absolute bottom-full left-0 z-50 mb-1 w-full min-w-40 overflow-hidden rounded border border-neutral-700 bg-neutral-800 shadow-xl"
+          className={`absolute z-50 overflow-hidden rounded border border-neutral-700 bg-neutral-800 shadow-xl ${menuPositionClass}`}
         >
           <button
             role="menuitem"
