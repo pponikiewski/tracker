@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getDb } from '@/lib/db/connection';
-import { listRecentErrors, clearAll, resetRetry, countPending } from '@/lib/sync/outbox';
+import { clearForUser, countPendingForUser, listRecentErrors, resetRetryForUser } from '@/lib/sync/outbox';
 import { tick } from '@/lib/sync/worker';
 import { useAuthStore } from '@/store/auth';
 
@@ -17,24 +17,26 @@ interface ErrRow {
 export function SyncStatusModal({ onClose }: Props) {
   const [errors, setErrors] = useState<ErrRow[]>([]);
   const syncStatus = useAuthStore((s) => s.syncStatus);
+  const authState = useAuthStore((s) => s.state);
   const setPendingCount = useAuthStore((s) => s.setPendingCount);
+  const userId = authState.kind === 'authed' ? authState.user.id : null;
 
   const refresh = async () => {
     const db = await getDb();
-    setErrors(await listRecentErrors(db));
+    setErrors(await listRecentErrors(db, 20, userId));
   };
 
   useEffect(() => {
     getDb()
-      .then((db) => listRecentErrors(db))
+      .then((db) => listRecentErrors(db, 20, userId))
       .then((rows) => setErrors(rows))
       .catch(() => {/* ignore */});
-  }, []);
+  }, [userId]);
 
   // Req 11.3: reset next_retry_at FIRST so rows in backoff window are picked up, THEN tick
   const onRetry = async () => {
     const db = await getDb();
-    await resetRetry(db);
+    await resetRetryForUser(db, userId);
     await tick();
     await refresh();
   };
@@ -45,8 +47,8 @@ export function SyncStatusModal({ onClose }: Props) {
       return; // Req 11.5: cancel → leave untouched, keep modal open
     }
     const db = await getDb();
-    await clearAll(db);
-    setPendingCount(await countPending(db));
+    await clearForUser(db, userId);
+    setPendingCount(await countPendingForUser(db, userId));
     onClose(); // Req 11.6: close modal after clear
   };
 

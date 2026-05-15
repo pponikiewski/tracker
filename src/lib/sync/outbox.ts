@@ -128,10 +128,50 @@ export async function countPending(db: Database): Promise<number> {
   return rows[0]?.c ?? 0;
 }
 
+export async function countPendingForUser(
+  db: Database,
+  userId: string | null,
+): Promise<number> {
+  if (userId === null) {
+    const rows = await db.select<Array<{ c: number }>>(
+      `SELECT COUNT(*) as c FROM sync_outbox WHERE user_id IS NULL`,
+    );
+    return rows[0]?.c ?? 0;
+  }
+  const rows = await db.select<Array<{ c: number }>>(
+    `SELECT COUNT(*) as c
+       FROM sync_outbox
+      WHERE user_id = $1 OR user_id IS NULL`,
+    [userId],
+  );
+  return rows[0]?.c ?? 0;
+}
+
 export async function listRecentErrors(
   db: Database,
   limit = 20,
+  userId?: string | null,
 ): Promise<Array<{ id: number; entity: string; entity_id: string; last_error: string | null; attempts: number }>> {
+  if (userId !== undefined) {
+    if (userId === null) {
+      return db.select(
+        `SELECT id, entity, entity_id, last_error, attempts
+         FROM sync_outbox
+         WHERE last_error IS NOT NULL
+           AND user_id IS NULL
+         ORDER BY id DESC LIMIT $1`,
+        [limit],
+      );
+    }
+    return db.select(
+      `SELECT id, entity, entity_id, last_error, attempts
+       FROM sync_outbox
+       WHERE last_error IS NOT NULL
+         AND (user_id = $1 OR user_id IS NULL)
+       ORDER BY id DESC LIMIT $2`,
+      [userId, limit],
+    );
+  }
   return db.select(
     `SELECT id, entity, entity_id, last_error, attempts
      FROM sync_outbox
@@ -145,6 +185,14 @@ export async function clearAll(db: Database): Promise<void> {
   await db.execute(`DELETE FROM sync_outbox`);
 }
 
+export async function clearForUser(db: Database, userId: string | null): Promise<void> {
+  if (userId === null) {
+    await db.execute(`DELETE FROM sync_outbox WHERE user_id IS NULL`);
+    return;
+  }
+  await db.execute(`DELETE FROM sync_outbox WHERE user_id = $1 OR user_id IS NULL`, [userId]);
+}
+
 export async function clearLegacyRows(db: Database): Promise<void> {
   await db.execute(`DELETE FROM sync_outbox WHERE user_id IS NULL`);
 }
@@ -153,5 +201,24 @@ export async function clearLegacyRows(db: Database): Promise<void> {
 export async function resetRetry(db: Database): Promise<void> {
   await db.execute(
     `UPDATE sync_outbox SET next_retry_at = NULL WHERE last_error IS NOT NULL`,
+  );
+}
+
+export async function resetRetryForUser(db: Database, userId: string | null): Promise<void> {
+  if (userId === null) {
+    await db.execute(
+      `UPDATE sync_outbox
+          SET next_retry_at = NULL
+        WHERE last_error IS NOT NULL
+          AND user_id IS NULL`,
+    );
+    return;
+  }
+  await db.execute(
+    `UPDATE sync_outbox
+        SET next_retry_at = NULL
+      WHERE last_error IS NOT NULL
+        AND (user_id = $1 OR user_id IS NULL)`,
+    [userId],
   );
 }

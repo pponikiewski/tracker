@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { TimeEvent } from "@/lib/db/types";
 import { parseTime, todayIso } from "@/lib/utils/time";
 
@@ -27,15 +27,7 @@ export function LogWorkModal({ resourceName, event, onSubmit, onCancel }: Props)
 
   const minutes = parseTime(timeInput);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
-  const submit = async () => {
+  const submit = useCallback(async () => {
     if (minutes === null || minutes <= 0 || submitting) return;
     setSubmitting(true);
     try {
@@ -50,7 +42,27 @@ export function LogWorkModal({ resourceName, event, onSubmit, onCancel }: Props)
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [date, goal, minutes, notes, onSubmit, report, submitting, topics]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void submit();
+        return;
+      }
+      if (e.key === "Enter" && e.target instanceof HTMLElement) {
+        const tagName = e.target.tagName.toLowerCase();
+        if (tagName !== "textarea") {
+          e.preventDefault();
+          void submit();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onCancel, submit]);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">

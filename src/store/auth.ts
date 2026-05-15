@@ -87,6 +87,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   signOut: async () => {
     if (!supabase) return;
+    try {
+      const { tick } = await import('@/lib/sync/worker');
+      await tick();
+    } catch (err) {
+      console.warn('[auth] final sync before signOut failed:', err);
+    }
     await supabase.auth.signOut();
   },
 

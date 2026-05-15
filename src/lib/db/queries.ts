@@ -375,8 +375,10 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
 
     // Enqueue the event only (recalcCachedMinutesForResource does NOT bump updated_at on resources)
     const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
-    if (rows[0])
+    if (rows[0]) {
       await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+      void import("@/lib/sync/worker").then(({ tick }) => tick());
+    }
 
     return id;
   });

@@ -1,7 +1,7 @@
 import { getDb } from '@/lib/db/connection';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
-import { listReady, deleteByIds, bumpRetry, countPending } from './outbox';
+import { listReady, deleteByIds, bumpRetry, countPendingForUser } from './outbox';
 import { pathToLtree } from '@/lib/utils/ltree';
 import type { Entity } from './types';
 
@@ -330,7 +330,7 @@ async function tickInternal(): Promise<void> {
   const userId = auth.state.user.id;
   const rows = (await listReady(db, now, 50, userId)) as ReadyRow[];
   if (rows.length === 0) {
-    auth.setPendingCount(await countPending(db));
+    auth.setPendingCount(await countPendingForUser(db, userId));
     return;
   }
   auth.setSyncStatus({ kind: 'syncing' });
@@ -386,7 +386,7 @@ async function tickInternal(): Promise<void> {
     auth.setSyncStatus({ kind: 'idle' });
     auth.setLastSyncAt(Date.now());
   }
-  auth.setPendingCount(await countPending(db));
+  auth.setPendingCount(await countPendingForUser(db, userId));
 }
 
 /**
