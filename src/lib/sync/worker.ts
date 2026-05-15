@@ -160,6 +160,18 @@ export function mapAssignmentToCloud(data: Record<string, unknown>): Record<stri
   };
 }
 
+export function mapMembershipToCloud(data: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...data,
+    joined_at: new Date(data.joined_at as number).toISOString(),
+    display_role_updated_at:
+      data.display_role_updated_at != null
+        ? new Date(data.display_role_updated_at as number).toISOString()
+        : null,
+    deleted_at: data.deleted_at != null ? new Date(data.deleted_at as number).toISOString() : null,
+  };
+}
+
 // Activity log rows carry their author in user_id; do not replace it with the
 // currently authenticated sync user.
 export function mapActivityLogToCloud(data: Record<string, unknown>): Record<string, unknown> {
@@ -179,6 +191,9 @@ function validateMembershipTimestamps(data: Record<string, unknown>): string | n
   if (!isValidTimestamp(data.joined_at)) return `invalid joined_at: ${String(data.joined_at)}`;
   if (data.display_role_updated_at != null && !isValidTimestamp(data.display_role_updated_at)) {
     return `invalid display_role_updated_at: ${String(data.display_role_updated_at)}`;
+  }
+  if (data.deleted_at != null && !isValidTimestamp(data.deleted_at)) {
+    return `invalid deleted_at: ${String(data.deleted_at)}`;
   }
   return null;
 }
@@ -224,15 +239,18 @@ async function flushEntity(
 
   const db = await getDb();
 
-  // Handle workspace_membership separately (composite key delete, joined_at conversion)
+  // Handle workspace_membership separately (composite key, joined_at conversion)
   if (entity === "workspace_membership") {
     for (const row of latestRows) {
       const data = JSON.parse(row.payload) as Record<string, unknown>;
 
       if (row.op === "delete") {
+        // Legacy outbox rows used hard delete. Keep them drainable, but turn
+        // them into a cloud tombstone so delayed clients cannot resurrect the
+        // membership as local-only data.
         const { error } = await supabase
           .from("workspace_memberships")
-          .delete()
+          .update({ deleted_at: new Date().toISOString() })
           .match({ workspace_id: data.workspace_id, user_id: data.user_id });
         if (error) {
           if (isPermanentRejection(error)) {
@@ -256,14 +274,7 @@ async function flushEntity(
           outcome.invalidIds.push(row.id);
           continue;
         }
-        const mapped = {
-          ...data,
-          joined_at: new Date(data.joined_at as number).toISOString(),
-          display_role_updated_at:
-            data.display_role_updated_at != null
-              ? new Date(data.display_role_updated_at as number).toISOString()
-              : null,
-        };
+        const mapped = mapMembershipToCloud(data);
         const { error } = await supabase
           .from("workspace_memberships")
           .upsert(mapped, { onConflict: "workspace_id,user_id" });

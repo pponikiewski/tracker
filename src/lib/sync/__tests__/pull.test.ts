@@ -78,7 +78,7 @@ const mkWorkspace = (id: string, updated_at: number, name = id): Workspace => ({
 });
 
 const mkMembership = (workspaceId: string, userId: string, joined_at: number): WorkspaceMembership => ({
-  workspace_id: workspaceId, user_id: userId, role: 'owner', joined_at,
+  workspace_id: workspaceId, user_id: userId, role: 'owner', joined_at, deleted_at: null,
 });
 
 describe('pull merge on workspaces', () => {
@@ -144,5 +144,22 @@ describe('ISO timestamp conversion helpers', () => {
     const cloud: MembershipWithId = { ...mkMembership('ws-1', 'u-1', 10), id: 'ws-1:u-1', updated_at: 10 };
     const r = lwwMerge<MembershipWithId>([local], [cloud]);
     expect(r.writeSqlite[0]?.joined_at).toBe(10);
+  });
+
+  it('soft-deleted membership with newer updated_at propagates to outbox', () => {
+    type MembershipWithId = WorkspaceMembership & { id: string; updated_at: number };
+    const local: MembershipWithId = {
+      ...mkMembership('ws-1', 'u-1', 5),
+      deleted_at: 20,
+      id: 'ws-1:u-1',
+      updated_at: 20,
+    };
+    const cloud: MembershipWithId = {
+      ...mkMembership('ws-1', 'u-1', 5),
+      id: 'ws-1:u-1',
+      updated_at: 5,
+    };
+    const r = lwwMerge<MembershipWithId>([local], [cloud]);
+    expect(r.pushOutbox[0]?.deleted_at).toBe(20);
   });
 });

@@ -94,7 +94,8 @@ function membershipEqual(a: WorkspaceMembership, b: WorkspaceMembership): boolea
     a.role === b.role &&
     a.joined_at === b.joined_at &&
     a.display_role === b.display_role &&
-    a.display_role_updated_at === b.display_role_updated_at
+    a.display_role_updated_at === b.display_role_updated_at &&
+    a.deleted_at === b.deleted_at
   );
 }
 
@@ -143,9 +144,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     },
 
     userWorkspaces: () => {
-      const { workspaces } = get();
+      const { workspaces, memberships } = get();
+      const userId = getCurrentUserId();
+      const activeMembershipWorkspaceIds = new Set(
+        memberships.filter((m) => m.deleted_at === null).map((m) => m.workspace_id),
+      );
       return workspaces
-        .filter((w) => w.deleted_at === null)
+        .filter((w) => {
+          if (w.deleted_at !== null) return false;
+          if (!userId) return true;
+          return activeMembershipWorkspaceIds.has(w.id);
+        })
         .sort((a, b) => a.created_at - b.created_at);
     },
 
@@ -265,8 +274,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     // ---- restoreActiveWorkspace ----
 
     restoreActiveWorkspace: async (userId: string | null) => {
-      const { workspaces } = get();
-      const available = workspaces.filter((w) => w.deleted_at === null);
+      const available = get().userWorkspaces();
 
       // Try to restore from localStorage
       let restoredId: string | null = null;
@@ -302,16 +310,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
     removeMember: async (workspaceId: string, userId: string) => {
       if (!supabase) throw new Error("Supabase not configured");
+      const deletedAt = new Date().toISOString();
 
-      // Delete from Supabase first
+      // Soft-delete in Supabase first. Membership tombstones prevent delayed
+      // clients from re-creating removed members as local-only rows.
       const { error } = await supabase
         .from("workspace_memberships")
-        .delete()
+        .update({ deleted_at: deletedAt })
         .match({ workspace_id: workspaceId, user_id: userId });
 
       if (error) throw new Error(error.message);
 
-      // Then delete from local SQLite
+      // Then mirror the tombstone in local SQLite and outbox.
       await workspaceQueries.deleteMembership(workspaceId, userId);
 
       // Refresh memberships
@@ -428,6 +438,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         display_role_updated_at: membership.display_role_updated_at
           ? Date.parse(membership.display_role_updated_at)
           : null,
+        deleted_at: null,
       });
 
       await get().refresh();

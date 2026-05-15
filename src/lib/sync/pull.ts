@@ -97,6 +97,7 @@ function cloudToLocalMembership(c: Record<string, unknown>): WorkspaceMembership
     joined_at: toMs(c.joined_at),
     display_role: (c.display_role as string | null) ?? null,
     display_role_updated_at: c.display_role_updated_at ? toMs(c.display_role_updated_at) : null,
+    deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
   };
 }
 
@@ -370,7 +371,7 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
   // updated_at is required by MergeRow; role labels use display_role_updated_at, otherwise joined_at.
   type MembershipWithId = WorkspaceMembership & { id: string; updated_at: number };
   const membershipUpdatedAt = (m: WorkspaceMembership): number =>
-    m.display_role_updated_at ?? m.joined_at;
+    Math.max(m.joined_at, m.display_role_updated_at ?? 0, m.deleted_at ?? 0);
   const localMemWithId: MembershipWithId[] = localMem.map((m) => ({
     ...m,
     id: `${m.workspace_id}:${m.user_id}`,
@@ -399,12 +400,13 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
           : m.display_role_updated_at;
 
       await db.execute(
-        `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6)
+        `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT(workspace_id, user_id) DO UPDATE SET
            role=excluded.role, joined_at=excluded.joined_at,
            display_role=excluded.display_role,
-           display_role_updated_at=excluded.display_role_updated_at`,
+           display_role_updated_at=excluded.display_role_updated_at,
+           deleted_at=excluded.deleted_at`,
         [
           m.workspace_id,
           m.user_id,
@@ -412,6 +414,7 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
           m.joined_at,
           displayRole ?? null,
           displayRoleUpdatedAt ?? null,
+          m.deleted_at,
         ],
       );
     }
@@ -434,6 +437,7 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
         joined_at: m.joined_at,
         display_role: m.display_role ?? null,
         display_role_updated_at: m.display_role_updated_at ?? null,
+        deleted_at: m.deleted_at,
       };
       await enqueue(
         db,
@@ -741,9 +745,7 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       const workspaceState = useWorkspaceStore.getState();
       const activeWorkspaceStillExists =
         workspaceState.activeWorkspaceId !== null &&
-        workspaceState.workspaces.some(
-          (w) => w.id === workspaceState.activeWorkspaceId && w.deleted_at === null,
-        );
+        workspaceState.userWorkspaces().some((w) => w.id === workspaceState.activeWorkspaceId);
       if (!activeWorkspaceStillExists) {
         await workspaceState.restoreActiveWorkspace(userId);
       }

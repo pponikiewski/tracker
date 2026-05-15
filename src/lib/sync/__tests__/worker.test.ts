@@ -16,6 +16,7 @@ import {
   isValidTimestamp,
   mapActivityLogToCloud,
   mapEventToCloud,
+  mapMembershipToCloud,
   mapResourceToCloud,
   mapToCloud,
   mapWorkspaceToCloud,
@@ -286,6 +287,23 @@ describe('sync worker flush order', () => {
       'assignment',
       'activity_log',
     ]);
+  });
+});
+
+describe('workspace membership cloud mapping', () => {
+  it('converts deleted_at tombstones for soft-deleted memberships', () => {
+    const deletedAt = 1700000000000;
+    const result = mapMembershipToCloud({
+      workspace_id: '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+      user_id: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'member',
+      joined_at: 1600000000000,
+      display_role: null,
+      display_role_updated_at: null,
+      deleted_at: deletedAt,
+    });
+
+    expect(result.deleted_at).toBe(new Date(deletedAt).toISOString());
   });
 });
 

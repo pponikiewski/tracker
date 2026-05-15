@@ -56,9 +56,13 @@ export async function runPhase5Migration(db: Database): Promise<void> {
     joined_at     INTEGER NOT NULL,
     display_role  TEXT,
     display_role_updated_at INTEGER,
+    deleted_at    INTEGER,
     PRIMARY KEY (workspace_id, user_id)
   )`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_wm_user ON workspace_memberships(user_id)`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_wm_active ON workspace_memberships(deleted_at) WHERE deleted_at IS NULL`,
+  );
 
   // Step 1c: Recreate sync_outbox with extended entity CHECK constraint
   await db.execute(`CREATE TABLE IF NOT EXISTS sync_outbox_new (
@@ -227,6 +231,7 @@ export async function getDb(): Promise<Database> {
   await runPhase5Migration(db);
   await runPhase6Migration(db);
   await ensureMembershipDisplayRoleColumns(db);
+  await ensureMembershipDeletedAtColumn(db);
   await ensureOutboxUserIdColumn(db);
   await ensureActivityLogSchema(db);
   await ensureOutboxAllowsActivityLog(db);
@@ -285,6 +290,17 @@ async function ensureMembershipDisplayRoleColumns(db: Database): Promise<void> {
       "ALTER TABLE workspace_memberships ADD COLUMN display_role_updated_at INTEGER",
     );
   }
+}
+
+async function ensureMembershipDeletedAtColumn(db: Database): Promise<void> {
+  type PragmaRow = { name: string };
+  const cols = await db.select<PragmaRow[]>("PRAGMA table_info('workspace_memberships')");
+  if (!cols.some((c) => c.name === "deleted_at")) {
+    await db.execute("ALTER TABLE workspace_memberships ADD COLUMN deleted_at INTEGER");
+  }
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_wm_active ON workspace_memberships(deleted_at) WHERE deleted_at IS NULL`,
+  );
 }
 
 /**

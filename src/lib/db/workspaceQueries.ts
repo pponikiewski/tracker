@@ -22,7 +22,7 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
 export async function listMemberships(workspaceId: string): Promise<WorkspaceMembership[]> {
   const db = await getDb();
   return db.select<WorkspaceMembership[]>(
-    "SELECT * FROM workspace_memberships WHERE workspace_id = $1",
+    "SELECT * FROM workspace_memberships WHERE workspace_id = $1 AND deleted_at IS NULL",
     [workspaceId],
   );
 }
@@ -30,7 +30,7 @@ export async function listMemberships(workspaceId: string): Promise<WorkspaceMem
 export async function getUserMemberships(userId: string): Promise<WorkspaceMembership[]> {
   const db = await getDb();
   return db.select<WorkspaceMembership[]>(
-    "SELECT * FROM workspace_memberships WHERE user_id = $1",
+    "SELECT * FROM workspace_memberships WHERE user_id = $1 AND deleted_at IS NULL",
     [userId],
   );
 }
@@ -100,6 +100,7 @@ export async function createWorkspace(input: {
       joined_at: ts,
       display_role: null,
       display_role_updated_at: null,
+      deleted_at: null,
     };
 
     await enqueue(
@@ -198,8 +199,8 @@ export async function softDeleteWorkspace(id: string): Promise<void> {
 export async function insertMembership(m: WorkspaceMembership): Promise<void> {
   await withTx(async (db) => {
     await db.execute(
-      `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at, deleted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         m.workspace_id,
         m.user_id,
@@ -207,6 +208,7 @@ export async function insertMembership(m: WorkspaceMembership): Promise<void> {
         m.joined_at,
         m.display_role ?? null,
         m.display_role_updated_at ?? null,
+        m.deleted_at,
       ],
     );
 
@@ -223,13 +225,14 @@ export async function insertMembership(m: WorkspaceMembership): Promise<void> {
 export async function upsertMembershipLocal(m: WorkspaceMembership): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at, deleted_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT(workspace_id, user_id) DO UPDATE SET
        role=excluded.role,
        joined_at=excluded.joined_at,
        display_role=excluded.display_role,
-       display_role_updated_at=excluded.display_role_updated_at`,
+       display_role_updated_at=excluded.display_role_updated_at,
+       deleted_at=excluded.deleted_at`,
     [
       m.workspace_id,
       m.user_id,
@@ -237,6 +240,7 @@ export async function upsertMembershipLocal(m: WorkspaceMembership): Promise<voi
       m.joined_at,
       m.display_role ?? null,
       m.display_role_updated_at ?? null,
+      m.deleted_at,
     ],
   );
 }
@@ -288,20 +292,36 @@ export async function updateMembershipDisplayRole(
 }
 
 /**
- * Deletes a workspace membership and enqueues a delete op for sync.
+ * Soft-deletes a workspace membership and enqueues the tombstone for sync.
  * Requirements: 7.2
  */
 export async function deleteMembership(workspaceId: string, userId: string): Promise<void> {
   await withTx(async (db) => {
-    await db.execute("DELETE FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2", [
-      workspaceId,
-      userId,
-    ]);
+    const ts = now();
 
-    await enqueue(db, "workspace_membership", `${workspaceId}:${userId}`, "delete", {
-      workspace_id: workspaceId,
-      user_id: userId,
-    });
+    await db.execute(
+      `UPDATE workspace_memberships
+          SET deleted_at = $1
+        WHERE workspace_id = $2
+          AND user_id = $3
+          AND deleted_at IS NULL`,
+      [ts, workspaceId, userId],
+    );
+
+    const rows = await db.select<WorkspaceMembership[]>(
+      "SELECT * FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 LIMIT 1",
+      [workspaceId, userId],
+    );
+
+    if (rows[0]) {
+      await enqueue(
+        db,
+        "workspace_membership",
+        `${workspaceId}:${userId}`,
+        "upsert",
+        rows[0] as unknown as Record<string, unknown>,
+      );
+    }
 
     await recordActivity(db, {
       workspaceId,
@@ -389,12 +409,16 @@ export async function claimLocalWorkspace(workspaceId: string, userId: string): 
       [userId, ts, workspaceId],
     );
 
-    // 2. membership row: replace 'local' with real userId
-    // We cannot UPDATE the PK column in-place cleanly; delete + insert instead.
+    // 2. membership row: retire the local pseudo-user and add the real owner.
+    // We cannot UPDATE the PK column in-place cleanly, so keep a local
+    // tombstone for the pseudo-user and insert the real membership.
     await db.execute(
-      `DELETE FROM workspace_memberships
-         WHERE workspace_id = $1 AND user_id = 'local'`,
-      [workspaceId],
+      `UPDATE workspace_memberships
+          SET deleted_at = $1
+        WHERE workspace_id = $2
+          AND user_id = 'local'
+          AND deleted_at IS NULL`,
+      [ts, workspaceId],
     );
     await db.execute(
       `INSERT OR IGNORE INTO workspace_memberships (workspace_id, user_id, role, joined_at)
@@ -424,6 +448,7 @@ export async function claimLocalWorkspace(workspaceId: string, userId: string): 
       joined_at: ts,
       display_role: null,
       display_role_updated_at: null,
+      deleted_at: null,
     };
     await enqueue(
       db,

@@ -93,10 +93,12 @@ CREATE TABLE IF NOT EXISTS workspace_memberships (
   joined_at     INTEGER NOT NULL,
   display_role  TEXT,
   display_role_updated_at INTEGER,
+  deleted_at    INTEGER,
   PRIMARY KEY (workspace_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wm_user ON workspace_memberships(user_id);
+CREATE INDEX IF NOT EXISTS idx_wm_active ON workspace_memberships(deleted_at) WHERE deleted_at IS NULL;
 
 -- Recreate sync_outbox with extended entity CHECK constraint.
 -- Wrapped in a BEGIN/COMMIT so the whole block is atomic.

@@ -88,20 +88,20 @@ describe('replaceWorkspaceMemberships', () => {
   it('replaces only memberships for the active workspace', () => {
     const result = replaceWorkspaceMemberships(
       [
-        { workspace_id: 'ws-1', user_id: 'old', role: 'member', joined_at: 1 },
-        { workspace_id: 'ws-2', user_id: 'keep', role: 'owner', joined_at: 2 },
+        { workspace_id: 'ws-1', user_id: 'old', role: 'member', joined_at: 1, deleted_at: null },
+        { workspace_id: 'ws-2', user_id: 'keep', role: 'owner', joined_at: 2, deleted_at: null },
       ],
       'ws-1',
       [
-        { workspace_id: 'ws-1', user_id: 'owner', role: 'owner', joined_at: 3 },
-        { workspace_id: 'ws-1', user_id: 'member', role: 'member', joined_at: 4 },
+        { workspace_id: 'ws-1', user_id: 'owner', role: 'owner', joined_at: 3, deleted_at: null },
+        { workspace_id: 'ws-1', user_id: 'member', role: 'member', joined_at: 4, deleted_at: null },
       ],
     );
 
     expect(result).toEqual([
-      { workspace_id: 'ws-2', user_id: 'keep', role: 'owner', joined_at: 2 },
-      { workspace_id: 'ws-1', user_id: 'owner', role: 'owner', joined_at: 3 },
-      { workspace_id: 'ws-1', user_id: 'member', role: 'member', joined_at: 4 },
+      { workspace_id: 'ws-2', user_id: 'keep', role: 'owner', joined_at: 2, deleted_at: null },
+      { workspace_id: 'ws-1', user_id: 'owner', role: 'owner', joined_at: 3, deleted_at: null },
+      { workspace_id: 'ws-1', user_id: 'member', role: 'member', joined_at: 4, deleted_at: null },
     ]);
   });
 });

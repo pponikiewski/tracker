@@ -87,6 +87,7 @@ export interface WorkspaceMembership {
   joined_at: number;
   display_role?: string | null;
   display_role_updated_at?: number | null;
+  deleted_at: number | null;
 }
 
 export interface Invite {
