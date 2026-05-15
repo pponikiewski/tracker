@@ -7,6 +7,7 @@ import {
   teamRowsToMarkdown,
   type MemberRow,
   type TeamReportProfile,
+  type TeamResourceBreakdown,
 } from "@/lib/analytics/teamAnalytics";
 import { AvatarBadge } from "@/components/Profile/AvatarBadge";
 import { formatMinutes } from "@/lib/utils/time";
@@ -53,8 +54,7 @@ function MemberRowItem({ row, displayRole, onContextMenu }: MemberRowItemProps) 
   const getProfile = useProfileStore((s) => s.getProfile);
   const profile = getProfile(row.userId);
   const hasBreakdown = row.projectBreakdown.length > 0;
-  const rowClassName =
-    "flex w-full items-center gap-3 px-4 py-3 bg-neutral-800 text-left";
+  const rowClassName = "flex w-full items-center gap-3 px-4 py-3 bg-neutral-800 text-left";
   const rowContent = (
     <>
       <AvatarBadge
@@ -115,19 +115,116 @@ function MemberRowItem({ row, displayRole, onContextMenu }: MemberRowItemProps) 
       {expanded && hasBreakdown && (
         <ul className="border-t border-neutral-700 bg-neutral-900 divide-y divide-neutral-800">
           {row.projectBreakdown.map((proj) => (
-            <li key={proj.resourceId} className="flex items-center justify-between px-4 py-2 pl-12">
-              <span className="text-xs text-neutral-400 truncate min-w-0 mr-3">
-                {proj.resourceName}
-              </span>
-              <span className="text-xs text-neutral-300 shrink-0 tabular-nums">
-                {formatMinutes(proj.minutes)}
-              </span>
+            <ResourceBreakdownItem key={proj.resourceId} resource={proj} depth={0} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+interface ResourceBreakdownItemProps {
+  resource: TeamResourceBreakdown;
+  depth: number;
+}
+
+function ResourceBreakdownItem({ resource, depth }: ResourceBreakdownItemProps) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails = resource.children.length > 0 || resource.events.length > 0;
+  const indent = 48 + depth * 18;
+  const typeLabel = getResourceTypeLabel(resource.resourceType);
+
+  const content = (
+    <>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs text-neutral-300">{resource.resourceName}</span>
+        <span className="mt-0.5 block text-[10px] uppercase tracking-wide text-neutral-600">
+          {typeLabel}
+        </span>
+      </span>
+      <span className="ml-3 shrink-0 text-xs tabular-nums text-neutral-300">
+        {formatMinutes(resource.minutes)}
+      </span>
+      {hasDetails ? (
+        <ChevronRight
+          aria-hidden="true"
+          size={14}
+          className={`ml-2 shrink-0 text-neutral-600 transition-transform ${
+            expanded ? "rotate-90" : ""
+          }`}
+        />
+      ) : (
+        <span className="ml-2 w-3.5 shrink-0" />
+      )}
+    </>
+  );
+
+  return (
+    <li>
+      {hasDetails ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full items-center gap-2 py-2 pr-4 text-left hover:bg-neutral-800/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
+          style={{ paddingLeft: indent }}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "Zwin" : "Rozwin"} ${resource.resourceName}`}
+        >
+          {content}
+        </button>
+      ) : (
+        <div className="flex w-full items-center gap-2 py-2 pr-4" style={{ paddingLeft: indent }}>
+          {content}
+        </div>
+      )}
+
+      {expanded && hasDetails && (
+        <ul className="divide-y divide-neutral-800/70 bg-neutral-950/40">
+          {resource.children.map((child) => (
+            <ResourceBreakdownItem key={child.resourceId} resource={child} depth={depth + 1} />
+          ))}
+          {resource.events.map((event) => (
+            <li
+              key={event.id}
+              className="py-2 pr-4 text-xs text-neutral-400"
+              style={{ paddingLeft: 48 + (depth + 1) * 18 }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block text-neutral-300">{event.goal || "Wpis bez celu"}</span>
+                  {event.topics && (
+                    <span className="mt-0.5 block truncate text-neutral-500">{event.topics}</span>
+                  )}
+                  {(event.notes || event.report) && (
+                    <span className="mt-1 block whitespace-pre-wrap text-neutral-500">
+                      {event.notes ?? event.report}
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 text-right tabular-nums text-neutral-400">
+                  <span className="block">{event.date}</span>
+                  <span className="block text-neutral-300">{formatMinutes(event.minutes)}</span>
+                </span>
+              </div>
             </li>
           ))}
         </ul>
       )}
     </li>
   );
+}
+
+function getResourceTypeLabel(type: TeamResourceBreakdown["resourceType"]): string {
+  switch (type) {
+    case "project":
+      return "Projekt";
+    case "stage":
+      return "Etap";
+    case "substage":
+      return "Podetap";
+    case "task":
+      return "Zadanie";
+  }
 }
 
 // ---- TeamView ----
