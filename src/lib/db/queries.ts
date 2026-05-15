@@ -107,11 +107,13 @@ export async function moveResource(id: string, newParentId: string | null): Prom
     if (!node) throw new Error("Resource not found");
     if (node.parent_id === newParentId) return; // no-op
 
-    let newType: ResourceType = node.type;
+    const newType: ResourceType = node.type; // type is fixed at creation — move never changes it
     let newPathPrefix = "";
 
     if (newParentId === null) {
-      newType = "project";
+      if (node.type !== "project") {
+        throw new Error("Tylko projekt może być na najwyższym poziomie");
+      }
     } else {
       const parent = await getResource(newParentId);
       if (!parent) throw new Error("New parent not found");
