@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import {
   collapseDuplicates,
+  FLUSH_ORDER,
   isValidTimestamp,
   mapActivityLogToCloud,
   mapEventToCloud,
@@ -272,6 +273,19 @@ describe('collapseDuplicates examples', () => {
     ]);
     expect(r.perEntity.resource[0]?.id).toBe(5);
     expect(r.supersededIds.resource.sort()).toEqual([1, 3]);
+  });
+});
+
+describe('sync worker flush order', () => {
+  it('flushes workspace-scoped parents before dependent rows', () => {
+    expect(FLUSH_ORDER).toEqual([
+      'workspace',
+      'workspace_membership',
+      'resource',
+      'event',
+      'assignment',
+      'activity_log',
+    ]);
   });
 });
 

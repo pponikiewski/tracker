@@ -31,6 +31,15 @@ interface TickOptions {
   silent?: boolean;
 }
 
+export const FLUSH_ORDER: Entity[] = [
+  "workspace",
+  "workspace_membership",
+  "resource",
+  "event",
+  "assignment",
+  "activity_log",
+];
+
 export function collapseDuplicates(rows: ReadyRow[]): CollapseResult {
   const latest = new Map<string, ReadyRow>();
   const perEntity: Record<Entity, ReadyRow[]> = {
@@ -377,94 +386,43 @@ async function tickInternal(options: TickOptions): Promise<void> {
   if (!silent) auth.setSyncStatus({ kind: "syncing" });
   const { perEntity, supersededIds } = collapseDuplicates(rows);
 
-  // Req 6.7: flush each entity independently
-  const resOutcome = await flushEntity(
-    "resource",
-    perEntity.resource,
-    supersededIds.resource,
-    userId,
-  );
-  const evtOutcome = await flushEntity("event", perEntity.event, supersededIds.event, userId);
-  const wsOutcome = await flushEntity(
-    "workspace",
-    perEntity.workspace,
-    supersededIds.workspace,
-    userId,
-  );
-  const wsmOutcome = await flushEntity(
-    "workspace_membership",
-    perEntity.workspace_membership,
-    supersededIds.workspace_membership,
-    userId,
-  );
-  const asnOutcome = await flushEntity(
-    "assignment",
-    perEntity.assignment,
-    supersededIds.assignment,
-    userId,
-  );
-  const actOutcome = await flushEntity(
-    "activity_log",
-    perEntity.activity_log,
-    supersededIds.activity_log,
-    userId,
-  );
+  // Req 6.7: flush each entity independently, with parent/workspace rows first
+  // to avoid transient FK/RLS failures for newly created workspace data.
+  const outcomes: Record<Entity, FlushOutcome> = {
+    resource: { deletableIds: [], failedIds: [], invalidIds: [] },
+    event: { deletableIds: [], failedIds: [], invalidIds: [] },
+    workspace: { deletableIds: [], failedIds: [], invalidIds: [] },
+    workspace_membership: { deletableIds: [], failedIds: [], invalidIds: [] },
+    assignment: { deletableIds: [], failedIds: [], invalidIds: [] },
+    activity_log: { deletableIds: [], failedIds: [], invalidIds: [] },
+  };
+
+  for (const entity of FLUSH_ORDER) {
+    outcomes[entity] = await flushEntity(entity, perEntity[entity], supersededIds[entity], userId);
+  }
 
   // Delete successfully flushed rows
-  await deleteByIds(db, [
-    ...resOutcome.deletableIds,
-    ...evtOutcome.deletableIds,
-    ...wsOutcome.deletableIds,
-    ...wsmOutcome.deletableIds,
-    ...asnOutcome.deletableIds,
-    ...actOutcome.deletableIds,
-  ]);
+  await deleteByIds(
+    db,
+    FLUSH_ORDER.flatMap((entity) => outcomes[entity].deletableIds),
+  );
 
   // Bump retry only on failed latest rows (invalid rows already had bumpRetry called per-row)
-  if (resOutcome.failedIds.length > 0) {
-    await bumpRetry(db, resOutcome.failedIds, resOutcome.errorMessage ?? "unknown", Date.now());
-  }
-  if (evtOutcome.failedIds.length > 0) {
-    await bumpRetry(db, evtOutcome.failedIds, evtOutcome.errorMessage ?? "unknown", Date.now());
-  }
-  if (wsOutcome.failedIds.length > 0) {
-    await bumpRetry(db, wsOutcome.failedIds, wsOutcome.errorMessage ?? "unknown", Date.now());
-  }
-  if (wsmOutcome.failedIds.length > 0) {
-    await bumpRetry(db, wsmOutcome.failedIds, wsmOutcome.errorMessage ?? "unknown", Date.now());
-  }
-  if (asnOutcome.failedIds.length > 0) {
-    await bumpRetry(db, asnOutcome.failedIds, asnOutcome.errorMessage ?? "unknown", Date.now());
-  }
-  if (actOutcome.failedIds.length > 0) {
-    await bumpRetry(db, actOutcome.failedIds, actOutcome.errorMessage ?? "unknown", Date.now());
+  for (const entity of FLUSH_ORDER) {
+    const outcome = outcomes[entity];
+    if (outcome.failedIds.length > 0) {
+      await bumpRetry(db, outcome.failedIds, outcome.errorMessage ?? "unknown", Date.now());
+    }
   }
 
-  const anyFailed =
-    resOutcome.failedIds.length +
-      evtOutcome.failedIds.length +
-      wsOutcome.failedIds.length +
-      wsmOutcome.failedIds.length +
-      asnOutcome.failedIds.length +
-      actOutcome.failedIds.length +
-      resOutcome.invalidIds.length +
-      evtOutcome.invalidIds.length +
-      wsOutcome.invalidIds.length +
-      wsmOutcome.invalidIds.length +
-      asnOutcome.invalidIds.length +
-      actOutcome.invalidIds.length >
-    0;
+  const anyFailed = FLUSH_ORDER.some((entity) => {
+    const outcome = outcomes[entity];
+    return outcome.failedIds.length > 0 || outcome.invalidIds.length > 0;
+  });
 
   if (anyFailed) {
     const msg =
-      [
-        resOutcome.errorMessage,
-        evtOutcome.errorMessage,
-        wsOutcome.errorMessage,
-        wsmOutcome.errorMessage,
-        asnOutcome.errorMessage,
-        actOutcome.errorMessage,
-      ]
+      FLUSH_ORDER.map((entity) => outcomes[entity].errorMessage)
         .filter(Boolean)
         .join("; ") || "sync error";
     auth.setSyncStatus({ kind: "error", message: msg });
