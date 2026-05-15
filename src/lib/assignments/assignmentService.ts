@@ -122,7 +122,7 @@ export async function createAssignment(
           entityType: "assignment",
           entityId: row.id,
           entityName: resourceName,
-          summary: `Przywrocono przypisanie do "${resourceName}"`,
+          summary: `Przywrócono przypisanie do "${resourceName}"`,
           metadata: { resource_id: resourceId, assigned_user_id: userId },
           timestamp: ts,
         });
@@ -160,7 +160,7 @@ export async function createAssignment(
       entityType: "assignment",
       entityId: id,
       entityName: resourceName,
-      summary: `Przypisano osobe do "${resourceName}"`,
+      summary: `Przypisano osobę do "${resourceName}"`,
       metadata: { resource_id: resourceId, assigned_user_id: userId },
       timestamp: ts,
     });
@@ -233,7 +233,7 @@ export async function removeAssignment(
         entityType: "assignment",
         entityId: id,
         entityName: resourceName,
-        summary: `Usunieto przypisanie z "${resourceName}"`,
+        summary: `Usunięto przypisanie z "${resourceName}"`,
         metadata: { resource_id: resourceId, assigned_user_id: userId },
         timestamp: ts,
       });

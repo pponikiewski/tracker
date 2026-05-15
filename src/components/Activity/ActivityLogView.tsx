@@ -4,9 +4,9 @@ export function ActivityLogView() {
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       <header className="shrink-0 border-b border-neutral-800 px-4 py-3">
-        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">Logi zdarzen</h1>
+        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">Logi zdarzeń</h1>
         <p className="mt-1 text-xs text-neutral-500">
-          Krotki zapis tego, kto i kiedy zmienial projekty, czas, workspace i przypisania.
+          Krótki zapis tego, kto i kiedy zmieniał projekty, czas, workspace i przypisania.
         </p>
       </header>
 

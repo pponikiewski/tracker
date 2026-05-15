@@ -434,7 +434,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         entityType: "workspace_membership",
         entityId: userId,
         entityName: userId,
-        summary: "Dolaczono do workspace",
+        summary: "Dołączono do workspace",
         metadata: { user_id: userId },
       });
       const { pullNow } = await import("@/lib/sync/worker");

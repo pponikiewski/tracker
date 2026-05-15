@@ -19,7 +19,7 @@ interface Props {
 export function CreateResourceModal({
   title,
   placeholder,
-  confirmLabel = "Utworz",
+  confirmLabel = "Utwórz",
   initialColor,
   presets = COLOR_PRESETS,
   onConfirm,

@@ -157,7 +157,7 @@ function App() {
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-sm text-neutral-500">
-                Ladowanie logow zdarzen...
+                Ładowanie logów zdarzeń...
               </div>
             }
           >

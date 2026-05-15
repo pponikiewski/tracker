@@ -23,7 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "projects", label: "Projekty", hint: "Ctrl+1", icon: FolderTree },
   { id: "history", label: "Historia", hint: "Ctrl+2", icon: History },
   { id: "dashboard", label: "Raporty", hint: "Ctrl+3", icon: BarChart3 },
-  { id: "activity", label: "Logi zdarzen", hint: "Ctrl+4", icon: ScrollText },
+  { id: "activity", label: "Logi zdarzeń", hint: "Ctrl+4", icon: ScrollText },
   { id: "team", label: "Zespół", hint: "Ctrl+5", icon: Users },
 ];
 

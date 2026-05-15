@@ -11,18 +11,18 @@ const ACTION_LABELS: Record<string, string> = {
   "resource.rename": "Zmiana",
   "resource.color": "Kolor",
   "resource.move": "Ruch",
-  "resource.delete_subtree": "Usuniecie",
-  "resource.lift_delete": "Usuniecie",
-  "resource.detach_delete": "Usuniecie",
+  "resource.delete_subtree": "Usunięcie",
+  "resource.lift_delete": "Usunięcie",
+  "resource.detach_delete": "Usunięcie",
   "event.create": "Czas",
   "event.update": "Edycja",
-  "event.delete": "Usuniecie",
+  "event.delete": "Usunięcie",
   "workspace.create": "Workspace",
   "workspace.rename": "Workspace",
   "workspace.delete": "Workspace",
-  "member.display_role": "Zespol",
-  "member.remove": "Zespol",
-  "member.join": "Zespol",
+  "member.display_role": "Zespół",
+  "member.remove": "Zespół",
+  "member.join": "Zespół",
   "assignment.create": "Przypisanie",
   "assignment.restore": "Przypisanie",
   "assignment.delete": "Przypisanie",
@@ -85,7 +85,7 @@ export function ActivityLogPanel() {
       <div className="mb-3">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-            Log zdarzen
+            Log zdarzeń
           </h2>
           <p className="mt-1 text-[11px] text-neutral-500">Ostatnie akcje w aktywnym workspace.</p>
         </div>
@@ -97,11 +97,11 @@ export function ActivityLogPanel() {
         </div>
       ) : loading && entries.length === 0 ? (
         <div className="flex h-24 items-center justify-center text-sm text-neutral-500">
-          Ladowanie...
+          Ładowanie...
         </div>
       ) : entries.length === 0 ? (
         <div className="flex h-24 items-center justify-center text-sm text-neutral-500">
-          Brak zdarzen.
+          Brak zdarzeń.
         </div>
       ) : (
         <div className="divide-y divide-neutral-800">

@@ -154,7 +154,7 @@ export async function renameWorkspace(id: string, name: string): Promise<void> {
         entityType: "workspace",
         entityId: id,
         entityName: name,
-        summary: `Zmieniono nazwe workspace "${previous?.name ?? id}" na "${name}"`,
+        summary: `Zmieniono nazwę workspace "${previous?.name ?? id}" na "${name}"`,
         metadata: { from: previous?.name ?? null, to: name },
         timestamp: ts,
       });
@@ -184,7 +184,7 @@ export async function softDeleteWorkspace(id: string): Promise<void> {
         entityType: "workspace",
         entityId: id,
         entityName: rows[0].name,
-        summary: `Usunieto workspace "${rows[0].name}"`,
+        summary: `Usunięto workspace "${rows[0].name}"`,
         timestamp: ts,
       });
     }
@@ -278,8 +278,8 @@ export async function updateMembershipDisplayRole(
         entityId: userId,
         entityName: userId,
         summary: displayRole
-          ? `Ustawiono role opisowa dla uzytkownika: ${displayRole}`
-          : "Wyczyszczono role opisowa uzytkownika",
+          ? `Ustawiono rolę opisową dla użytkownika: ${displayRole}`
+          : "Wyczyszczono rolę opisową użytkownika",
         metadata: { user_id: userId, display_role: displayRole },
         timestamp: updatedAt,
       });
@@ -309,7 +309,7 @@ export async function deleteMembership(workspaceId: string, userId: string): Pro
       entityType: "workspace_membership",
       entityId: userId,
       entityName: userId,
-      summary: "Usunieto czlonka z workspace",
+      summary: "Usunięto członka z workspace",
       metadata: { user_id: userId },
     });
   });

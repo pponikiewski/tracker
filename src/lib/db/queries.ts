@@ -121,7 +121,7 @@ export async function renameResource(id: string, name: string): Promise<void> {
         entityType: "resource",
         entityId: id,
         entityName: name,
-        summary: `Zmieniono nazwe "${previous?.name ?? id}" na "${name}"`,
+        summary: `Zmieniono nazwę "${previous?.name ?? id}" na "${name}"`,
         metadata: { from: previous?.name ?? null, to: name },
       });
     }
@@ -302,7 +302,7 @@ export async function softDeleteSubtree(id: string): Promise<void> {
       entityType: "resource",
       entityId: id,
       entityName: r.name,
-      summary: `Usunieto "${r.name}" i jego zawartosc`,
+      summary: `Usunięto "${r.name}" i jego zawartość`,
       metadata: { resource_count: resourceIds.length, event_count: eventIds.length },
       timestamp: ts,
     });
@@ -363,7 +363,7 @@ export async function liftChildrenAndDelete(id: string): Promise<void> {
       entityType: "resource",
       entityId: id,
       entityName: node.name,
-      summary: `Usunieto "${node.name}" i podniesiono jego dzieci`,
+      summary: `Usunięto "${node.name}" i podniesiono jego dzieci`,
       metadata: { children_count: children.length },
       timestamp: ts,
     });
@@ -436,7 +436,7 @@ export async function detachChildrenAsProjects(id: string): Promise<void> {
       entityType: "resource",
       entityId: id,
       entityName: node.name,
-      summary: `Usunieto "${node.name}" i zamieniono dzieci na projekty`,
+      summary: `Usunięto "${node.name}" i zamieniono dzieci na projekty`,
       metadata: { children_count: children.length },
       timestamp: ts,
     });
@@ -661,7 +661,7 @@ export async function deleteEvent(id: string): Promise<void> {
         entityType: "event",
         entityId: id,
         entityName: resourceName,
-        summary: `Usunieto wpis ${prev.minutes} min z "${resourceName}"`,
+        summary: `Usunięto wpis ${prev.minutes} min z "${resourceName}"`,
         metadata: { resource_id: prev.resource_id, date: prev.date, minutes: prev.minutes },
         timestamp: ts,
       });

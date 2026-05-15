@@ -3,7 +3,7 @@ import { Cloud, CloudOff, TriangleAlert } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { SyncStatusModal } from './SyncStatusModal';
 
-// Keep healthy cloud saves visually quiet; only offline/errors change the badge.
+// Keep healthy online saves visually quiet; only offline/errors change the badge.
 export function SyncStatusBadge() {
   const state = useAuthStore((s) => s.state);
   const status = useAuthStore((s) => s.syncStatus);
@@ -19,26 +19,32 @@ export function SyncStatusBadge() {
 
   if (status.kind === 'offline') {
     label = 'Offline';
-    title = 'Cloud connection is offline';
+    title = 'Brak połączenia. Zmiany zostaną zapisane online po odzyskaniu dostępu.';
     Icon = CloudOff;
-    cls += ' border-neutral-500 text-neutral-400';
+    cls += ' border-red-500 text-red-400';
   } else if (status.kind === 'error') {
-    label = 'Cloud issue';
+    label = 'Offline';
     title = status.message;
     Icon = TriangleAlert;
     cls += ' border-red-500 text-red-400';
   } else {
-    label = 'Cloud';
-    title = pending > 0
-      ? `${pending} change${pending === 1 ? '' : 's'} saving in the background`
-      : 'Cloud is running in the background';
+    label = 'Online';
+    title =
+      pending > 0
+        ? `Zapisywanie zmian online w tle: ${pending}`
+        : 'Synchronizacja online działa w tle';
     Icon = Cloud;
-    cls += ' border-neutral-600 text-neutral-400';
+    cls += ' border-green-500 text-green-400';
   }
 
   return (
     <>
-      <button className={cls} onClick={() => setOpen(true)} aria-label="Cloud status" title={title}>
+      <button
+        className={cls}
+        onClick={() => setOpen(true)}
+        aria-label="Status online"
+        title={title}
+      >
         <Icon size={13} aria-hidden="true" />
         {label}
       </button>

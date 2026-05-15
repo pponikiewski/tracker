@@ -1,9 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useProjects } from "@/store/projects";
 import { useWorkspaceStore } from "@/store/workspace";
-import { useAssignmentStore } from "@/store/assignments";
-import { useProfileStore } from "@/store/profile";
-import { useAuthStore } from "@/store/auth";
 import { usePresenceStore } from "@/store/presence";
 import { useTreeUiStore } from "@/store/treeUi";
 import { TreeView } from "./Tree/TreeView";
@@ -20,7 +17,6 @@ import {
   canParent,
   defaultChildType,
   type Resource,
-  type ResourceNode,
   type ResourceType,
 } from "@/lib/db/types";
 import { isDescendantPath } from "@/lib/utils/tree";
@@ -31,9 +27,6 @@ const TYPE_LABEL: Record<ResourceType, string> = {
   substage: "Podetap",
   task: "Zadanie",
 };
-
-/** Filter value: 'all' = no filter, 'me' = assigned to current user, or a specific user_id */
-type AssignmentFilter = "all" | "me" | string;
 
 interface MenuState {
   x: number;
@@ -55,80 +48,6 @@ const isEditableTarget = (el: EventTarget | null): boolean => {
   return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
 };
 
-/**
- * Collect all node IDs in the subtree rooted at `node` that have the given userId as an assignee.
- * Returns a set of matching resource IDs.
- */
-function collectMatchingIds(
-  node: ResourceNode,
-  userId: string,
-  assignmentsByResource: Record<string, string[]>,
-): Set<string> {
-  const result = new Set<string>();
-  const assignees = assignmentsByResource[node.id] ?? [];
-  if (assignees.includes(userId)) {
-    result.add(node.id);
-  }
-  for (const child of node.children) {
-    for (const id of collectMatchingIds(child, userId, assignmentsByResource)) {
-      result.add(id);
-    }
-  }
-  return result;
-}
-
-/**
- * Given a tree and a set of directly-matched IDs, compute:
- * - `visibleIds`: IDs that should be shown (matched + ancestors)
- * - `dimmedIds`: ancestor IDs that should be shown at reduced opacity
- *
- * Returns null if the filter is 'all' (no filtering needed).
- */
-function computeFilteredSets(
-  tree: ResourceNode[],
-  matchedIds: Set<string>,
-): { visibleIds: Set<string>; dimmedIds: Set<string> } {
-  const visibleIds = new Set<string>();
-  const dimmedIds = new Set<string>();
-
-  function walk(node: ResourceNode): boolean {
-    const isMatch = matchedIds.has(node.id);
-    let childMatched = false;
-    for (const child of node.children) {
-      if (walk(child)) childMatched = true;
-    }
-    if (isMatch || childMatched) {
-      visibleIds.add(node.id);
-      if (!isMatch && childMatched) {
-        // Ancestor node — show at reduced opacity
-        dimmedIds.add(node.id);
-      }
-      return true;
-    }
-    return false;
-  }
-
-  for (const node of tree) {
-    walk(node);
-  }
-
-  return { visibleIds, dimmedIds };
-}
-
-/**
- * Filter a tree to only include nodes whose IDs are in `visibleIds`.
- * Preserves tree structure (ancestors are kept even if not directly matched).
- */
-function filterTree(nodes: ResourceNode[], visibleIds: Set<string>): ResourceNode[] {
-  const result: ResourceNode[] = [];
-  for (const node of nodes) {
-    if (!visibleIds.has(node.id)) continue;
-    const filteredChildren = filterTree(node.children, visibleIds);
-    result.push({ ...node, children: filteredChildren });
-  }
-  return result;
-}
-
 export function ProjectsView() {
   const resources = useProjects((s) => s.resources);
   const tree = useProjects((s) => s.tree);
@@ -145,13 +64,7 @@ export function ProjectsView() {
   const detachAsProjects = useProjects((s) => s.detachAsProjects);
   const logTime = useProjects((s) => s.logTime);
 
-  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
-  const memberships = useWorkspaceStore((s) => s.memberships);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
-  const activeWorkspace = allWorkspaces.find((w) => w.id === activeWorkspaceId) ?? null;
-  const assignmentsByResource = useAssignmentStore((s) => s.assignmentsByResource);
-  const getProfile = useProfileStore((s) => s.getProfile);
-  const authState = useAuthStore((s) => s.state);
 
   const selectedId = useTreeUiStore((s) => s.selectedId);
   const renamingId = useTreeUiStore((s) => s.renamingId);
@@ -167,73 +80,13 @@ export function ProjectsView() {
   const [colorTargetId, setColorTargetId] = useState<string | null>(null);
   const [logWorkResource, setLogWorkResource] = useState<Resource | null>(null);
 
-  // Assignment filter state — reset to 'all' on workspace change
-  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all");
-
-  // Detect Local_Personal_Workspace (owner_id === 'local')
-  const isLocalWorkspace = activeWorkspace?.owner_id === "local";
-
-  // Reset filter when workspace changes
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- assignment filter is scoped to the active workspace
-    setAssignmentFilter("all");
-  }, [activeWorkspaceId]);
-
-  // Resolve the effective user ID for the current filter
-  const currentUserId = authState.kind === "authed" ? authState.user.id : null;
-  const effectiveFilterUserId = useMemo((): string | null => {
-    if (assignmentFilter === "all") return null;
-    if (assignmentFilter === "me") return currentUserId;
-    return assignmentFilter;
-  }, [assignmentFilter, currentUserId]);
-
-  // Compute filtered tree and dimmed IDs
-  const { filteredTree, dimmedIds, hasMatches } = useMemo(() => {
-
-    if (effectiveFilterUserId === null) {
-      return { filteredTree: tree, dimmedIds: new Set<string>(), hasMatches: true };
-    }
-    const matchedIds = new Set<string>();
-    for (const node of tree) {
-      for (const id of collectMatchingIds(node, effectiveFilterUserId, assignmentsByResource)) {
-        matchedIds.add(id);
-      }
-    }
-    if (matchedIds.size === 0) {
-      return { filteredTree: [], dimmedIds: new Set<string>(), hasMatches: false };
-    }
-    const { visibleIds, dimmedIds: dIds } = computeFilteredSets(tree, matchedIds);
-    const ft = filterTree(tree, visibleIds);
-    return { filteredTree: ft, dimmedIds: dIds, hasMatches: true };
-  }, [tree, effectiveFilterUserId, assignmentsByResource]);
-
-  // Build member list for the filter dropdown (workspace members excluding current user for "me" option)
-  const workspaceMembers = useMemo(() => {
-    return memberships.map((m) => ({
-      userId: m.user_id,
-      displayName: getProfile(m.user_id).display_name,
-    }));
-  }, [memberships, getProfile]);
-
-  // Label for the empty-state message
-  const emptyStateLabel = useMemo(() => {
-    if (assignmentFilter === "me") return "Assigned to me";
-    if (assignmentFilter !== "all") {
-      const member = workspaceMembers.find((m) => m.userId === assignmentFilter);
-      return member ? member.displayName : assignmentFilter;
-    }
-    return "";
-  }, [assignmentFilter, workspaceMembers]);
-
   useEffect(() => {
     void refresh();
   }, [refresh, activeWorkspaceId]);
 
-  // Mirror dimmedIds into the tree-ui store so per-node TreeNode subscribers
-  // can read their own dimmed boolean without re-rendering the whole tree.
   useEffect(() => {
-    setDimmedIdsStore(dimmedIds);
-  }, [dimmedIds, setDimmedIdsStore]);
+    setDimmedIdsStore(new Set());
+  }, [setDimmedIdsStore]);
 
   // Faza 7 presence: broadcast which resource the user is editing (log modal
   // or inline rename) so teammates see an "is editing" badge on the node.
@@ -578,54 +431,24 @@ export function ProjectsView() {
         </div>
       )}
 
-      {/* Assignment filter bar — hidden for Local_Personal_Workspace */}
-      {!isLocalWorkspace && (
-        <div className="flex items-center gap-2 border-b border-neutral-800 px-4 py-1.5">
-          <span className="text-xs text-neutral-500">Filtr:</span>
-          <select
-            value={assignmentFilter}
-            onChange={(e) => setAssignmentFilter(e.target.value as AssignmentFilter)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs text-neutral-200 focus:border-blue-500 focus:outline-none"
-            aria-label="Filtr przypisania"
-          >
-            <option value="all">Wszyscy członkowie</option>
-            <option value="me">Przypisane do mnie</option>
-            {workspaceMembers
-              .filter((m) => m.userId !== currentUserId)
-              .map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.displayName}
-                </option>
-              ))}
-          </select>
-        </div>
-      )}
-
       <main className="flex-1 overflow-auto">
-        {!hasMatches ? (
-          <div className="px-4 py-12 text-center text-sm text-neutral-500">
-            Brak zasobów przypisanych do <span className="text-neutral-300">{emptyStateLabel}</span>
-            .
-          </div>
-        ) : (
-          <TreeView
-            tree={filteredTree}
-            onToggle={toggleExpanded}
-            onSelect={setSelectedId}
-            onContextMenu={handleContextNode}
-            onContextMenuEmpty={handleContextEmpty}
-            onDragOverEmpty={handleDragOverEmpty}
-            onDropEmpty={handleDropEmpty}
-            onLogWork={handleLogWork}
-            onStartRename={setRenamingId}
-            onCommitRename={handleCommitRename}
-            onCancelRename={handleCancelRename}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            onDragEnd={handleDragEnd}
-          />
-        )}
+        <TreeView
+          tree={tree}
+          onToggle={toggleExpanded}
+          onSelect={setSelectedId}
+          onContextMenu={handleContextNode}
+          onContextMenuEmpty={handleContextEmpty}
+          onDragOverEmpty={handleDragOverEmpty}
+          onDropEmpty={handleDropEmpty}
+          onLogWork={handleLogWork}
+          onStartRename={setRenamingId}
+          onCommitRename={handleCommitRename}
+          onCancelRename={handleCancelRename}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onDragEnd={handleDragEnd}
+        />
       </main>
 
       {menu && (
