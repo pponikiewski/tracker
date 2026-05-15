@@ -225,6 +225,13 @@ Co MUSI zostać niezmienione przez cały projekt:
 4. **UUID v4** dla wszystkich id (client-side gen).
 5. **TypeScript strict + noUncheckedIndexedAccess**.
 6. **Tailwind v4 syntax** (`@import "tailwindcss"`, nie `@tailwind base/components/utilities`).
+7. **Tree nesting rules** — macierz rodzic→dziecko egzekwowana przez `canParent` w `src/lib/db/types.ts`:
+   - `project` → `[project, stage, task]` (projekt-w-projekcie = jedyna droga do podprojektu)
+   - `stage` → `[substage, task]`
+   - `substage` → `[task]`
+   - `task` → `[task]` (zadanie pod zadaniem dozwolone)
+   - Tylko `project` może być top-level (`parent_id = null`).
+   - Typ węzła jest stały — `moveResource` nigdy go nie zmienia.
 
 ---
 
