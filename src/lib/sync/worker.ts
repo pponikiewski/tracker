@@ -1,15 +1,15 @@
-import { getDb } from '@/lib/db/connection';
-import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/store/auth';
-import { listReady, deleteByIds, bumpRetry, countPendingForUser } from './outbox';
-import { pathToLtree } from '@/lib/utils/ltree';
-import type { Entity } from './types';
+import { getDb } from "@/lib/db/connection";
+import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/store/auth";
+import { listReady, deleteByIds, bumpRetry, countPendingForUser } from "./outbox";
+import { pathToLtree } from "@/lib/utils/ltree";
+import type { Entity } from "./types";
 
 interface ReadyRow {
   id: number;
   entity: Entity;
   entity_id: string;
-  op: 'upsert' | 'delete';
+  op: "upsert" | "delete";
   payload: string;
   attempts: number;
 }
@@ -33,8 +33,22 @@ interface TickOptions {
 
 export function collapseDuplicates(rows: ReadyRow[]): CollapseResult {
   const latest = new Map<string, ReadyRow>();
-  const perEntity: Record<Entity, ReadyRow[]> = { resource: [], event: [], workspace: [], workspace_membership: [], assignment: [] };
-  const supersededIds: Record<Entity, number[]> = { resource: [], event: [], workspace: [], workspace_membership: [], assignment: [] };
+  const perEntity: Record<Entity, ReadyRow[]> = {
+    resource: [],
+    event: [],
+    workspace: [],
+    workspace_membership: [],
+    assignment: [],
+    activity_log: [],
+  };
+  const supersededIds: Record<Entity, number[]> = {
+    resource: [],
+    event: [],
+    workspace: [],
+    workspace_membership: [],
+    assignment: [],
+    activity_log: [],
+  };
 
   for (const r of rows) {
     const k = `${r.entity}:${r.entity_id}`;
@@ -56,7 +70,7 @@ export function collapseDuplicates(rows: ReadyRow[]): CollapseResult {
 
 // Exported for property tests (Property 8)
 export function isValidTimestamp(v: unknown): boolean {
-  return typeof v === 'number' && Number.isInteger(v) && v > 0;
+  return typeof v === "number" && Number.isInteger(v) && v > 0;
 }
 
 // Exported for property tests (Property 7)
@@ -98,7 +112,7 @@ export function mapResourceToCloud(
     updated_at: base.updated_at,
     deleted_at: base.deleted_at,
   };
-  if (typeof rawPath === 'string' && rawPath.length > 0) {
+  if (typeof rawPath === "string" && rawPath.length > 0) {
     mapped.path = pathToLtree(rawPath);
   }
   return mapped;
@@ -153,15 +167,15 @@ function validateMembershipTimestamps(data: Record<string, unknown>): string | n
  */
 function isPermanentRejection(error: { code?: string; message?: string }): boolean {
   const code = error.code;
-  const msg = error.message?.toLowerCase() ?? '';
+  const msg = error.message?.toLowerCase() ?? "";
   // Missing table / relation
-  if (code === 'PGRST205' || code === '42P01') return true;
-  if (msg.includes('could not find the table')) return true;
-  if (msg.includes('relation') && msg.includes('does not exist')) return true;
+  if (code === "PGRST205" || code === "42P01") return true;
+  if (msg.includes("could not find the table")) return true;
+  if (msg.includes("relation") && msg.includes("does not exist")) return true;
   // RLS denial
-  if (code === '42501') return true;
-  if (msg.includes('row-level security') || msg.includes('row level security')) return true;
-  if (msg.includes('violates row-level security policy')) return true;
+  if (code === "42501") return true;
+  if (msg.includes("row-level security") || msg.includes("row level security")) return true;
+  if (msg.includes("violates row-level security policy")) return true;
   return false;
 }
 
@@ -188,13 +202,13 @@ async function flushEntity(
   const db = await getDb();
 
   // Handle workspace_membership separately (composite key delete, joined_at conversion)
-  if (entity === 'workspace_membership') {
+  if (entity === "workspace_membership") {
     for (const row of latestRows) {
       const data = JSON.parse(row.payload) as Record<string, unknown>;
 
-      if (row.op === 'delete') {
+      if (row.op === "delete") {
         const { error } = await supabase
-          .from('workspace_memberships')
+          .from("workspace_memberships")
           .delete()
           .match({ workspace_id: data.workspace_id, user_id: data.user_id });
         if (error) {
@@ -228,8 +242,8 @@ async function flushEntity(
               : null,
         };
         const { error } = await supabase
-          .from('workspace_memberships')
-          .upsert(mapped, { onConflict: 'workspace_id,user_id' });
+          .from("workspace_memberships")
+          .upsert(mapped, { onConflict: "workspace_id,user_id" });
         if (error) {
           if (isPermanentRejection(error)) {
             console.warn(
@@ -264,11 +278,11 @@ async function flushEntity(
       continue;
     }
     const mapped =
-      entity === 'workspace'
+      entity === "workspace"
         ? mapWorkspaceToCloud(data)
-        : entity === 'assignment'
+        : entity === "assignment"
           ? mapAssignmentToCloud(data)
-          : entity === 'resource'
+          : entity === "resource"
             ? mapResourceToCloud(data, userId)
             : mapToCloud(data, userId);
     toPush.push({ row, mapped });
@@ -280,14 +294,20 @@ async function flushEntity(
   }
 
   const table =
-    entity === 'resource' ? 'resources' :
-    entity === 'event' ? 'events' :
-    entity === 'assignment' ? 'assignments' :
-    'workspaces';
+    entity === "resource"
+      ? "resources"
+      : entity === "event"
+        ? "events"
+        : entity === "assignment"
+          ? "assignments"
+          : entity === "activity_log"
+            ? "activity_log"
+            : "workspaces";
 
-  const { error } = await supabase
-    .from(table)
-    .upsert(toPush.map((x) => x.mapped), { onConflict: 'id' });
+  const { error } = await supabase.from(table).upsert(
+    toPush.map((x) => x.mapped),
+    { onConflict: "id" },
+  );
 
   if (error) {
     if (isPermanentRejection(error)) {
@@ -325,9 +345,9 @@ export async function tick(options: TickOptions = {}): Promise<void> {
 async function tickInternal(options: TickOptions): Promise<void> {
   const silent = options.silent ?? false;
   const auth = useAuthStore.getState();
-  if (auth.state.kind !== 'authed') return;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    if (!silent) auth.setSyncStatus({ kind: 'offline' });
+  if (auth.state.kind !== "authed") return;
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    if (!silent) auth.setSyncStatus({ kind: "offline" });
     return;
   }
   const db = await getDb();
@@ -338,15 +358,41 @@ async function tickInternal(options: TickOptions): Promise<void> {
     auth.setPendingCount(await countPendingForUser(db, userId));
     return;
   }
-  if (!silent) auth.setSyncStatus({ kind: 'syncing' });
+  if (!silent) auth.setSyncStatus({ kind: "syncing" });
   const { perEntity, supersededIds } = collapseDuplicates(rows);
 
   // Req 6.7: flush each entity independently
-  const resOutcome = await flushEntity('resource', perEntity.resource, supersededIds.resource, userId);
-  const evtOutcome = await flushEntity('event', perEntity.event, supersededIds.event, userId);
-  const wsOutcome = await flushEntity('workspace', perEntity.workspace, supersededIds.workspace, userId);
-  const wsmOutcome = await flushEntity('workspace_membership', perEntity.workspace_membership, supersededIds.workspace_membership, userId);
-  const asnOutcome = await flushEntity('assignment', perEntity.assignment, supersededIds.assignment, userId);
+  const resOutcome = await flushEntity(
+    "resource",
+    perEntity.resource,
+    supersededIds.resource,
+    userId,
+  );
+  const evtOutcome = await flushEntity("event", perEntity.event, supersededIds.event, userId);
+  const wsOutcome = await flushEntity(
+    "workspace",
+    perEntity.workspace,
+    supersededIds.workspace,
+    userId,
+  );
+  const wsmOutcome = await flushEntity(
+    "workspace_membership",
+    perEntity.workspace_membership,
+    supersededIds.workspace_membership,
+    userId,
+  );
+  const asnOutcome = await flushEntity(
+    "assignment",
+    perEntity.assignment,
+    supersededIds.assignment,
+    userId,
+  );
+  const actOutcome = await flushEntity(
+    "activity_log",
+    perEntity.activity_log,
+    supersededIds.activity_log,
+    userId,
+  );
 
   // Delete successfully flushed rows
   await deleteByIds(db, [
@@ -355,41 +401,60 @@ async function tickInternal(options: TickOptions): Promise<void> {
     ...wsOutcome.deletableIds,
     ...wsmOutcome.deletableIds,
     ...asnOutcome.deletableIds,
+    ...actOutcome.deletableIds,
   ]);
 
   // Bump retry only on failed latest rows (invalid rows already had bumpRetry called per-row)
   if (resOutcome.failedIds.length > 0) {
-    await bumpRetry(db, resOutcome.failedIds, resOutcome.errorMessage ?? 'unknown', Date.now());
+    await bumpRetry(db, resOutcome.failedIds, resOutcome.errorMessage ?? "unknown", Date.now());
   }
   if (evtOutcome.failedIds.length > 0) {
-    await bumpRetry(db, evtOutcome.failedIds, evtOutcome.errorMessage ?? 'unknown', Date.now());
+    await bumpRetry(db, evtOutcome.failedIds, evtOutcome.errorMessage ?? "unknown", Date.now());
   }
   if (wsOutcome.failedIds.length > 0) {
-    await bumpRetry(db, wsOutcome.failedIds, wsOutcome.errorMessage ?? 'unknown', Date.now());
+    await bumpRetry(db, wsOutcome.failedIds, wsOutcome.errorMessage ?? "unknown", Date.now());
   }
   if (wsmOutcome.failedIds.length > 0) {
-    await bumpRetry(db, wsmOutcome.failedIds, wsmOutcome.errorMessage ?? 'unknown', Date.now());
+    await bumpRetry(db, wsmOutcome.failedIds, wsmOutcome.errorMessage ?? "unknown", Date.now());
   }
   if (asnOutcome.failedIds.length > 0) {
-    await bumpRetry(db, asnOutcome.failedIds, asnOutcome.errorMessage ?? 'unknown', Date.now());
+    await bumpRetry(db, asnOutcome.failedIds, asnOutcome.errorMessage ?? "unknown", Date.now());
+  }
+  if (actOutcome.failedIds.length > 0) {
+    await bumpRetry(db, actOutcome.failedIds, actOutcome.errorMessage ?? "unknown", Date.now());
   }
 
   const anyFailed =
-    resOutcome.failedIds.length + evtOutcome.failedIds.length +
-    wsOutcome.failedIds.length + wsmOutcome.failedIds.length +
-    asnOutcome.failedIds.length +
-    resOutcome.invalidIds.length + evtOutcome.invalidIds.length +
-    wsOutcome.invalidIds.length + wsmOutcome.invalidIds.length +
-    asnOutcome.invalidIds.length > 0;
+    resOutcome.failedIds.length +
+      evtOutcome.failedIds.length +
+      wsOutcome.failedIds.length +
+      wsmOutcome.failedIds.length +
+      asnOutcome.failedIds.length +
+      actOutcome.failedIds.length +
+      resOutcome.invalidIds.length +
+      evtOutcome.invalidIds.length +
+      wsOutcome.invalidIds.length +
+      wsmOutcome.invalidIds.length +
+      asnOutcome.invalidIds.length +
+      actOutcome.invalidIds.length >
+    0;
 
   if (anyFailed) {
     const msg =
-      [resOutcome.errorMessage, evtOutcome.errorMessage, wsOutcome.errorMessage, wsmOutcome.errorMessage, asnOutcome.errorMessage]
-        .filter(Boolean).join('; ') || 'sync error';
-    auth.setSyncStatus({ kind: 'error', message: msg });
+      [
+        resOutcome.errorMessage,
+        evtOutcome.errorMessage,
+        wsOutcome.errorMessage,
+        wsmOutcome.errorMessage,
+        asnOutcome.errorMessage,
+        actOutcome.errorMessage,
+      ]
+        .filter(Boolean)
+        .join("; ") || "sync error";
+    auth.setSyncStatus({ kind: "error", message: msg });
   } else {
-    if (!silent || auth.syncStatus.kind !== 'idle') {
-      auth.setSyncStatus({ kind: 'idle' });
+    if (!silent || auth.syncStatus.kind !== "idle") {
+      auth.setSyncStatus({ kind: "idle" });
     }
     auth.setLastSyncAt(Date.now());
   }
@@ -402,14 +467,14 @@ async function tickInternal(options: TickOptions): Promise<void> {
  */
 export async function pullNow(): Promise<void> {
   const auth = useAuthStore.getState();
-  if (auth.state.kind !== 'authed') return;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  if (auth.state.kind !== "authed") return;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return;
   const userId = auth.state.user.id;
   if (pullInFlight) return pullInFlight;
   pullInFlight = (async () => {
     try {
       // Lazy import avoids the worker → pull → worker import cycle.
-      const { runIncrementalPull } = await import('./pull');
+      const { runIncrementalPull } = await import("./pull");
       await runIncrementalPull(userId);
     } finally {
       pullInFlight = null;
@@ -420,29 +485,39 @@ export async function pullNow(): Promise<void> {
 
 export function startWorker(): void {
   if (timer) return; // Req 15.3: idempotent
-  timer = setInterval(() => { void tick({ silent: true }); }, 10_000);
+  timer = setInterval(() => {
+    void tick({ silent: true });
+  }, 10_000);
   // Faza 7: Supabase Realtime delivers cloud changes near-instantly. This poll
   // stays only as a fallback for dropped websockets, hence the slow interval.
-  pullTimer = setInterval(() => { void pullNow(); }, 120_000);
+  pullTimer = setInterval(() => {
+    void pullNow();
+  }, 120_000);
   // Lazy import avoids the worker <-> realtime import cycle.
-  void import('./realtime').then(({ startRealtime }) => startRealtime());
-  if (typeof document !== 'undefined') {
+  void import("./realtime").then(({ startRealtime }) => startRealtime());
+  if (typeof document !== "undefined") {
     visibilityHandler = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         void tick({ silent: true });
         void pullNow();
       }
     };
-    document.addEventListener('visibilitychange', visibilityHandler);
+    document.addEventListener("visibilitychange", visibilityHandler);
   }
 }
 
 export function stopWorker(): void {
-  if (timer) { clearInterval(timer); timer = null; }
-  if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
-  void import('./realtime').then(({ stopRealtime }) => stopRealtime());
-  if (visibilityHandler && typeof document !== 'undefined') {
-    document.removeEventListener('visibilitychange', visibilityHandler);
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  if (pullTimer) {
+    clearInterval(pullTimer);
+    pullTimer = null;
+  }
+  void import("./realtime").then(({ stopRealtime }) => stopRealtime());
+  if (visibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", visibilityHandler);
     visibilityHandler = null;
   }
 }

@@ -1,10 +1,10 @@
-import { BarChart3, FolderTree, History, Users } from "lucide-react";
+import { BarChart3, FolderTree, History, ScrollText, Users } from "lucide-react";
 import { AuthGate } from "@/components/Auth/AuthGate";
 import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { PresenceBar } from "@/components/Presence/PresenceBar";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
 
-export type Tab = "projects" | "dashboard" | "history" | "team";
+export type Tab = "projects" | "dashboard" | "history" | "activity" | "team";
 
 interface SidebarProps {
   tab: Tab;
@@ -23,7 +23,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "projects", label: "Projekty", hint: "Ctrl+1", icon: FolderTree },
   { id: "history", label: "Historia", hint: "Ctrl+2", icon: History },
   { id: "dashboard", label: "Raporty", hint: "Ctrl+3", icon: BarChart3 },
-  { id: "team", label: "Zespół", hint: "Ctrl+4", icon: Users },
+  { id: "activity", label: "Logi zdarzen", hint: "Ctrl+4", icon: ScrollText },
+  { id: "team", label: "Zespół", hint: "Ctrl+5", icon: Users },
 ];
 
 export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {

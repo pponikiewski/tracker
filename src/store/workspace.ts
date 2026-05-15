@@ -1,17 +1,18 @@
-import { create } from 'zustand';
-import { supabase } from '@/lib/supabase';
-import * as workspaceQueries from '@/lib/db/workspaceQueries';
-import type { Workspace, WorkspaceMembership } from '@/lib/db/types';
+import { create } from "zustand";
+import { supabase } from "@/lib/supabase";
+import * as workspaceQueries from "@/lib/db/workspaceQueries";
+import type { Workspace, WorkspaceMembership } from "@/lib/db/types";
 import {
   generateJoinCode as svcGenerateJoinCode,
   listActiveJoinCodes as svcListActiveJoinCodes,
   revokeJoinCode as svcRevokeJoinCode,
   redeemJoinCode as svcRedeemJoinCode,
   type JoinCode,
-} from '@/lib/workspace/joinCodeService';
-import { useAssignmentStore } from '@/store/assignments';
-import { useAuthStore } from '@/store/auth';
-import { useProfileStore } from '@/store/profile';
+} from "@/lib/workspace/joinCodeService";
+import { useAssignmentStore } from "@/store/assignments";
+import { useAuthStore } from "@/store/auth";
+import { useProfileStore } from "@/store/profile";
+import { recordActivityEntry } from "@/lib/activity/activityLog";
 
 // ---- Validation helpers ----
 
@@ -19,7 +20,7 @@ export function validateWorkspaceName(name: string): void {
   const trimmed = name.trim();
   if (trimmed.length < 1 || trimmed.length > 80) {
     throw new Error(
-      'Workspace name must be between 1 and 80 characters (after trimming whitespace).',
+      "Workspace name must be between 1 and 80 characters (after trimming whitespace).",
     );
   }
 }
@@ -27,7 +28,7 @@ export function validateWorkspaceName(name: string): void {
 // ---- localStorage key helpers ----
 
 function lsKey(userId: string | null): string {
-  return `tracker:activeWorkspaceId:${userId ?? 'anonymous'}`;
+  return `tracker:activeWorkspaceId:${userId ?? "anonymous"}`;
 }
 
 // ---- Store interface ----
@@ -72,7 +73,7 @@ interface WorkspaceState {
  */
 function getCurrentUserId(): string | null {
   const authState = useAuthStore.getState().state;
-  return authState.kind === 'authed' ? authState.user.id : null;
+  return authState.kind === "authed" ? authState.user.id : null;
 }
 
 function workspaceEqual(a: Workspace, b: Workspace): boolean {
@@ -97,7 +98,12 @@ function membershipEqual(a: WorkspaceMembership, b: WorkspaceMembership): boolea
   );
 }
 
-function reuseList<T>(prev: T[], next: T[], eq: (a: T, b: T) => boolean, key: (x: T) => string): T[] {
+function reuseList<T>(
+  prev: T[],
+  next: T[],
+  eq: (a: T, b: T) => boolean,
+  key: (x: T) => string,
+): T[] {
   const prevByKey = new Map(prev.map((x) => [key(x), x] as const));
   let allReused = next.length === prev.length;
   const reused = next.map((x, i) => {
@@ -117,10 +123,7 @@ export function replaceWorkspaceMemberships(
   workspaceId: string,
   nextForWorkspace: WorkspaceMembership[],
 ): WorkspaceMembership[] {
-  return [
-    ...current.filter((m) => m.workspace_id !== workspaceId),
-    ...nextForWorkspace,
-  ];
+  return [...current.filter((m) => m.workspace_id !== workspaceId), ...nextForWorkspace];
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
@@ -161,7 +164,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
           // before cloud pull. Team members would otherwise land in a new
           // empty "My workspace" instead of their joined workspace.
           const workspaces = (await workspaceQueries.listWorkspaces()).filter(
-            (w) => w.owner_id !== 'local',
+            (w) => w.owner_id !== "local",
           );
           const memberships = await workspaceQueries.getUserMemberships(userId);
           set({ workspaces, memberships, loading: false });
@@ -180,7 +183,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       const id = crypto.randomUUID();
 
       const userId = getCurrentUserId();
-      if (!userId) throw new Error('Cannot create workspace: no authenticated user.');
+      if (!userId) throw new Error("Cannot create workspace: no authenticated user.");
 
       try {
         await workspaceQueries.createWorkspace({ id, name: trimmed, ownerId: userId });
@@ -189,7 +192,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       } catch (err) {
         // Surface the underlying error so the caller sees something better
         // than a generic "Nieznany błąd".
-        console.error('[workspace] createWorkspace failed:', err);
+        console.error("[workspace] createWorkspace failed:", err);
         throw err instanceof Error ? err : new Error(String(err));
       }
       return id;
@@ -242,9 +245,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         }));
         // Exclude pseudo user_ids used by Local_Personal_Workspace — Supabase
         // expects UUIDs and returns 400 Bad Request for the sentinel 'local'.
-        const memberIds = memberships
-          .map((m) => m.user_id)
-          .filter((uid) => uid !== 'local');
+        const memberIds = memberships.map((m) => m.user_id).filter((uid) => uid !== "local");
 
         await Promise.all([
           useAssignmentStore.getState().loadAssignments(id),
@@ -296,11 +297,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     // ---- removeMember ----
 
     removeMember: async (workspaceId: string, userId: string) => {
-      if (!supabase) throw new Error('Supabase not configured');
+      if (!supabase) throw new Error("Supabase not configured");
 
       // Delete from Supabase first
       const { error } = await supabase
-        .from('workspace_memberships')
+        .from("workspace_memberships")
         .delete()
         .match({ workspace_id: workspaceId, user_id: userId });
 
@@ -316,12 +317,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     // ---- updateMemberDisplayRole ----
 
     updateMemberDisplayRole: async (workspaceId, userId, displayRole) => {
-      if (!supabase) throw new Error('Supabase not configured');
+      if (!supabase) throw new Error("Supabase not configured");
       const displayRoleUpdatedAtMs = Date.now();
       const displayRoleUpdatedAt = new Date(displayRoleUpdatedAtMs).toISOString();
 
       const { error } = await supabase
-        .from('workspace_memberships')
+        .from("workspace_memberships")
         .update({
           display_role: displayRole,
           display_role_updated_at: displayRoleUpdatedAt,
@@ -356,22 +357,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     // ---- joinWorkspaceByCode ----
 
     joinWorkspaceByCode: async (code: string) => {
-      if (!supabase) throw new Error('Supabase not configured');
+      if (!supabase) throw new Error("Supabase not configured");
 
       const workspaceId = await svcRedeemJoinCode(code);
 
       const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
-      if (!userId) throw new Error('Musisz być zalogowany, aby dołączyć do workspace.');
+      if (!userId) throw new Error("Musisz być zalogowany, aby dołączyć do workspace.");
 
       // Fetch workspace row so we can mirror it locally.
       const { data: wsData, error: wsError } = await supabase
-        .from('workspaces')
-        .select('*')
-        .eq('id', workspaceId)
+        .from("workspaces")
+        .select("*")
+        .eq("id", workspaceId)
         .single();
 
       if (wsError || !wsData) {
-        throw new Error('Nie udało się pobrać workspace po dołączeniu.');
+        throw new Error("Nie udało się pobrać workspace po dołączeniu.");
       }
 
       const ws = wsData as {
@@ -384,20 +385,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       };
 
       const { data: membershipData, error: membershipError } = await supabase
-        .from('workspace_memberships')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .eq('user_id', userId)
+        .from("workspace_memberships")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", userId)
         .single();
 
       if (membershipError || !membershipData) {
-        throw new Error('Nie udało się pobrać membership po dołączeniu.');
+        throw new Error("Nie udało się pobrać membership po dołączeniu.");
       }
 
       const membership = membershipData as {
         workspace_id: string;
         user_id: string;
-        role: 'owner' | 'member';
+        role: "owner" | "member";
         joined_at: string;
         display_role?: string | null;
         display_role_updated_at?: string | null;
@@ -427,7 +428,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
       await get().refresh();
       await get().setActiveWorkspace(workspaceId);
-      const { pullNow } = await import('@/lib/sync/worker');
+      await recordActivityEntry({
+        workspaceId,
+        action: "member.join",
+        entityType: "workspace_membership",
+        entityId: userId,
+        entityName: userId,
+        summary: "Dolaczono do workspace",
+        metadata: { user_id: userId },
+      });
+      const { pullNow } = await import("@/lib/sync/worker");
       await pullNow();
       await get().refresh();
       await get().setActiveWorkspace(workspaceId);
@@ -440,7 +450,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       const userId = getCurrentUserId();
       const allWorkspaces = await workspaceQueries.listWorkspaces();
       const workspaces = userId
-        ? allWorkspaces.filter((w) => w.owner_id !== 'local')
+        ? allWorkspaces.filter((w) => w.owner_id !== "local")
         : allWorkspaces;
       const activeWorkspaceId = get().activeWorkspaceId;
       const memberships = activeWorkspaceId

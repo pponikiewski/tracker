@@ -83,7 +83,7 @@ export interface Workspace {
 export interface WorkspaceMembership {
   workspace_id: string;
   user_id: string;
-  role: 'owner' | 'member';
+  role: "owner" | "member";
   joined_at: number;
   display_role?: string | null;
   display_role_updated_at?: number | null;
@@ -117,15 +117,31 @@ export interface CachedProfile {
   cached_at: number;
 }
 
+export interface ActivityLogEntry {
+  id: string;
+  workspace_id: string;
+  user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  entity_name: string | null;
+  summary: string;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
 export type Entity =
-  | 'resource'
-  | 'event'
-  | 'workspace'
-  | 'workspace_membership'
-  | 'assignment';
+  | "resource"
+  | "event"
+  | "workspace"
+  | "workspace_membership"
+  | "assignment"
+  | "activity_log";
 
 export type OutboxEntity = Entity;
-export type OutboxOp = 'upsert' | 'delete';
+export type OutboxOp = "upsert" | "delete";
 
 export interface OutboxRow {
   id: number;

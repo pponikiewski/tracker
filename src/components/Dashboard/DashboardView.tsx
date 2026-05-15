@@ -38,7 +38,10 @@ export function DashboardView() {
 
   const projects = useMemo(() => resources.filter((r) => r.type === "project"), [resources]);
 
-  const selectedEvents = useMemo(() => filterEventsByProjects(events, selected), [events, selected]);
+  const selectedEvents = useMemo(
+    () => filterEventsByProjects(events, selected),
+    [events, selected],
+  );
   const effectiveDrillResourceId = useMemo(() => {
     if (!drillResourceId) return null;
     const resource = resources.find((r) => r.id === drillResourceId);

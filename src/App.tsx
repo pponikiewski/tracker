@@ -11,6 +11,10 @@ const DashboardView = lazy(() =>
   import("./components/Dashboard/DashboardView").then((m) => ({ default: m.DashboardView })),
 );
 
+const ActivityLogView = lazy(() =>
+  import("./components/Activity/ActivityLogView").then((m) => ({ default: m.ActivityLogView })),
+);
+
 const TeamView = lazy(() =>
   import("./components/Team/TeamView").then((m) => ({ default: m.TeamView })),
 );
@@ -84,7 +88,10 @@ function App() {
       } else if (e.key === "3") {
         e.preventDefault();
         setTab("dashboard");
-      } else if (e.key === "4" && showTeamNavItem) {
+      } else if (e.key === "4") {
+        e.preventDefault();
+        setTab("activity");
+      } else if (e.key === "5" && showTeamNavItem) {
         e.preventDefault();
         setTab("team");
       }
@@ -145,6 +152,16 @@ function App() {
             }
           >
             <HistoryView />
+          </Suspense>
+        ) : tab === "activity" ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+                Ladowanie logow zdarzen...
+              </div>
+            }
+          >
+            <ActivityLogView />
           </Suspense>
         ) : tab === "team" ? (
           <Suspense

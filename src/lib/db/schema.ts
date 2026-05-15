@@ -190,3 +190,34 @@ ALTER TABLE sync_outbox_new RENAME TO sync_outbox;
 
 CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at);
 `;
+
+/**
+ * SQLite schema migration for the team activity log.
+ *
+ * The table is append-only in normal use and synced through the outbox as the
+ * `activity_log` entity. `deleted_at` is present to keep the row shape aligned
+ * with the LWW/outbox helpers used by other synced tables.
+ */
+export const ACTIVITY_LOG_SQL = `
+CREATE TABLE IF NOT EXISTS activity_log (
+  id           TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id      TEXT,
+  action       TEXT NOT NULL,
+  entity_type  TEXT NOT NULL,
+  entity_id    TEXT,
+  entity_name  TEXT,
+  summary      TEXT NOT NULL,
+  metadata     TEXT,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  deleted_at   INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_log_workspace_created
+  ON activity_log(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_log_user
+  ON activity_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_log_active
+  ON activity_log(deleted_at) WHERE deleted_at IS NULL;
+`;

@@ -4,8 +4,16 @@ import { buildPath, isDescendantPath, parentPath } from "../utils/tree";
 import { newId } from "../utils/uuid";
 import { enqueue } from "@/lib/sync/outbox";
 import { withTx } from "./tx";
+import { recordActivity } from "@/lib/activity/activityLog";
 
 const now = () => Date.now();
+
+const RESOURCE_LABEL: Record<ResourceType, string> = {
+  project: "projekt",
+  stage: "etap",
+  substage: "podetap",
+  task: "zadanie",
+};
 
 export async function listActiveResources(workspaceId: string): Promise<Resource[]> {
   const db = await getDb();
@@ -80,12 +88,24 @@ export async function createResource(input: CreateResourceInput): Promise<string
     if (rows[0])
       await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
 
+    await recordActivity(db, {
+      workspaceId: input.workspaceId,
+      action: "resource.create",
+      entityType: "resource",
+      entityId: id,
+      entityName: input.name,
+      summary: `Dodano ${RESOURCE_LABEL[input.type]} "${input.name}"`,
+      metadata: { type: input.type, parent_id: input.parentId },
+      timestamp: ts,
+    });
+
     return id;
   });
 }
 
 export async function renameResource(id: string, name: string): Promise<void> {
   await withTx(async (db) => {
+    const previous = await getResource(id);
     await db.execute("UPDATE resources SET name = $1, updated_at = $2 WHERE id = $3", [
       name,
       now(),
@@ -94,11 +114,23 @@ export async function renameResource(id: string, name: string): Promise<void> {
     const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
     if (rows[0])
       await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    if (rows[0]) {
+      await recordActivity(db, {
+        workspaceId: rows[0].workspace_id,
+        action: "resource.rename",
+        entityType: "resource",
+        entityId: id,
+        entityName: name,
+        summary: `Zmieniono nazwe "${previous?.name ?? id}" na "${name}"`,
+        metadata: { from: previous?.name ?? null, to: name },
+      });
+    }
   });
 }
 
 export async function setResourceColor(id: string, color: string | null): Promise<void> {
   await withTx(async (db) => {
+    const previous = await getResource(id);
     await db.execute("UPDATE resources SET color = $1, updated_at = $2 WHERE id = $3", [
       color,
       now(),
@@ -107,6 +139,19 @@ export async function setResourceColor(id: string, color: string | null): Promis
     const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
     if (rows[0])
       await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+    if (rows[0]) {
+      await recordActivity(db, {
+        workspaceId: rows[0].workspace_id,
+        action: "resource.color",
+        entityType: "resource",
+        entityId: id,
+        entityName: rows[0].name,
+        summary: color
+          ? `Zmieniono kolor "${rows[0].name}"`
+          : `Wyczyszczono kolor "${rows[0].name}"`,
+        metadata: { from: previous?.color ?? null, to: color },
+      });
+    }
   });
 }
 
@@ -166,6 +211,19 @@ export async function moveResource(id: string, newParentId: string | null): Prom
       const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
       if (rows[0])
         await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
+    }
+
+    const moved = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
+    if (moved[0]) {
+      await recordActivity(db, {
+        workspaceId: moved[0].workspace_id,
+        action: "resource.move",
+        entityType: "resource",
+        entityId: id,
+        entityName: moved[0].name,
+        summary: `Przeniesiono "${moved[0].name}"`,
+        metadata: { from_parent_id: node.parent_id, to_parent_id: newParentId },
+      });
     }
   });
 }
@@ -237,6 +295,17 @@ export async function softDeleteSubtree(id: string): Promise<void> {
       if (rows[0])
         await enqueue(db, "event", eid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
+
+    await recordActivity(db, {
+      workspaceId: r.workspace_id,
+      action: "resource.delete_subtree",
+      entityType: "resource",
+      entityId: id,
+      entityName: r.name,
+      summary: `Usunieto "${r.name}" i jego zawartosc`,
+      metadata: { resource_count: resourceIds.length, event_count: eventIds.length },
+      timestamp: ts,
+    });
   });
 }
 
@@ -287,6 +356,17 @@ export async function liftChildrenAndDelete(id: string): Promise<void> {
       if (rows[0])
         await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
+
+    await recordActivity(db, {
+      workspaceId: node.workspace_id,
+      action: "resource.lift_delete",
+      entityType: "resource",
+      entityId: id,
+      entityName: node.name,
+      summary: `Usunieto "${node.name}" i podniesiono jego dzieci`,
+      metadata: { children_count: children.length },
+      timestamp: ts,
+    });
   });
 }
 
@@ -315,6 +395,8 @@ async function rewriteDescendantPaths(oldPrefix: string, newPrefix: string): Pro
  */
 export async function detachChildrenAsProjects(id: string): Promise<void> {
   await withTx(async (db) => {
+    const node = await getResource(id);
+    if (!node) return;
     const children = await db.select<Resource[]>(
       "SELECT * FROM resources WHERE parent_id = $1 AND deleted_at IS NULL",
       [id],
@@ -347,6 +429,17 @@ export async function detachChildrenAsProjects(id: string): Promise<void> {
       if (rows[0])
         await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
+
+    await recordActivity(db, {
+      workspaceId: node.workspace_id,
+      action: "resource.detach_delete",
+      entityType: "resource",
+      entityId: id,
+      entityName: node.name,
+      summary: `Usunieto "${node.name}" i zamieniono dzieci na projekty`,
+      metadata: { children_count: children.length },
+      timestamp: ts,
+    });
   });
 }
 
@@ -395,6 +488,21 @@ export async function createEvent(input: CreateEventInput): Promise<string> {
     if (rows[0]) {
       await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
     }
+
+    const resources = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [
+      input.resourceId,
+    ]);
+    const resourceName = resources[0]?.name ?? input.resourceId;
+    await recordActivity(db, {
+      workspaceId: input.workspaceId,
+      action: "event.create",
+      entityType: "event",
+      entityId: id,
+      entityName: resourceName,
+      summary: `Zalogowano ${input.minutes} min do "${resourceName}"`,
+      metadata: { resource_id: input.resourceId, date: input.date, minutes: input.minutes },
+      timestamp: ts,
+    });
 
     return id;
   });
@@ -508,6 +616,24 @@ export async function updateEvent(input: UpdateEventInput): Promise<void> {
     const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [input.id]);
     if (rows[0]) {
       await enqueue(db, "event", input.id, "upsert", rows[0] as unknown as Record<string, unknown>);
+      const resources = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [
+        rows[0].resource_id,
+      ]);
+      const resourceName = resources[0]?.name ?? rows[0].resource_id;
+      await recordActivity(db, {
+        workspaceId: rows[0].workspace_id,
+        action: "event.update",
+        entityType: "event",
+        entityId: input.id,
+        entityName: resourceName,
+        summary: `Edytowano wpis czasu w "${resourceName}"`,
+        metadata: {
+          resource_id: rows[0].resource_id,
+          before: { date: prev.date, minutes: prev.minutes },
+          after: { date: rows[0].date, minutes: rows[0].minutes },
+        },
+        timestamp: ts,
+      });
     }
   });
 }
@@ -525,6 +651,20 @@ export async function deleteEvent(id: string): Promise<void> {
     const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
     if (rows[0]) {
       await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+      const resources = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [
+        prev.resource_id,
+      ]);
+      const resourceName = resources[0]?.name ?? prev.resource_id;
+      await recordActivity(db, {
+        workspaceId: prev.workspace_id,
+        action: "event.delete",
+        entityType: "event",
+        entityId: id,
+        entityName: resourceName,
+        summary: `Usunieto wpis ${prev.minutes} min z "${resourceName}"`,
+        metadata: { resource_id: prev.resource_id, date: prev.date, minutes: prev.minutes },
+        timestamp: ts,
+      });
     }
   });
 }

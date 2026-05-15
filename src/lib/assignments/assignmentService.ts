@@ -1,8 +1,9 @@
-import type Database from '@tauri-apps/plugin-sql';
-import { getDb } from '@/lib/db/connection';
-import { enqueue } from '@/lib/sync/outbox';
-import { withTx } from '@/lib/db/tx';
-import type { Assignment } from '@/lib/db/types';
+import type Database from "@tauri-apps/plugin-sql";
+import { getDb } from "@/lib/db/connection";
+import { enqueue } from "@/lib/sync/outbox";
+import { withTx } from "@/lib/db/tx";
+import type { Assignment } from "@/lib/db/types";
+import { recordActivity } from "@/lib/activity/activityLog";
 
 const now = () => Date.now();
 
@@ -14,13 +15,16 @@ const now = () => Date.now();
  *
  * Requirement 9.5
  */
-async function assertNotLocalWorkspace(db: Awaited<ReturnType<typeof getDb>>, workspaceId: string): Promise<void> {
+async function assertNotLocalWorkspace(
+  db: Awaited<ReturnType<typeof getDb>>,
+  workspaceId: string,
+): Promise<void> {
   const rows = await db.select<Array<{ owner_id: string }>>(
-    'SELECT owner_id FROM workspaces WHERE id = $1 LIMIT 1',
+    "SELECT owner_id FROM workspaces WHERE id = $1 LIMIT 1",
     [workspaceId],
   );
-  if (rows[0]?.owner_id === 'local') {
-    throw new Error('Assignments are not supported in the local workspace.');
+  if (rows[0]?.owner_id === "local") {
+    throw new Error("Assignments are not supported in the local workspace.");
   }
 }
 
@@ -35,11 +39,11 @@ async function assertWorkspaceMember(
   userId: string,
 ): Promise<void> {
   const rows = await db.select<Array<{ user_id: string }>>(
-    'SELECT user_id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 LIMIT 1',
+    "SELECT user_id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 LIMIT 1",
     [workspaceId, userId],
   );
   if (rows.length === 0) {
-    throw new Error('User is not a member of this workspace.');
+    throw new Error("User is not a member of this workspace.");
   }
 }
 
@@ -96,12 +100,32 @@ export async function createAssignment(
         [ts, row.id],
       );
 
-      const updated = await db.select<Assignment[]>(
-        'SELECT * FROM assignments WHERE id = $1',
-        [row.id],
-      );
+      const updated = await db.select<Assignment[]>("SELECT * FROM assignments WHERE id = $1", [
+        row.id,
+      ]);
       if (updated[0]) {
-        await enqueue(db, 'assignment', row.id, 'upsert', updated[0] as unknown as Record<string, unknown>);
+        await enqueue(
+          db,
+          "assignment",
+          row.id,
+          "upsert",
+          updated[0] as unknown as Record<string, unknown>,
+        );
+        const resources = await db.select<Array<{ name: string }>>(
+          "SELECT name FROM resources WHERE id = $1 LIMIT 1",
+          [resourceId],
+        );
+        const resourceName = resources[0]?.name ?? resourceId;
+        await recordActivity(db, {
+          workspaceId,
+          action: "assignment.restore",
+          entityType: "assignment",
+          entityId: row.id,
+          entityName: resourceName,
+          summary: `Przywrocono przypisanie do "${resourceName}"`,
+          metadata: { resource_id: resourceId, assigned_user_id: userId },
+          timestamp: ts,
+        });
       }
       return;
     }
@@ -124,7 +148,22 @@ export async function createAssignment(
       [id, resourceId, userId, workspaceId, ts, ts],
     );
 
-    await enqueue(db, 'assignment', id, 'upsert', assignment as unknown as Record<string, unknown>);
+    await enqueue(db, "assignment", id, "upsert", assignment as unknown as Record<string, unknown>);
+    const resources = await db.select<Array<{ name: string }>>(
+      "SELECT name FROM resources WHERE id = $1 LIMIT 1",
+      [resourceId],
+    );
+    const resourceName = resources[0]?.name ?? resourceId;
+    await recordActivity(db, {
+      workspaceId,
+      action: "assignment.create",
+      entityType: "assignment",
+      entityId: id,
+      entityName: resourceName,
+      summary: `Przypisano osobe do "${resourceName}"`,
+      metadata: { resource_id: resourceId, assigned_user_id: userId },
+      timestamp: ts,
+    });
   });
 }
 
@@ -172,14 +211,32 @@ export async function removeAssignment(
       [ts, id],
     );
 
-    const updated = await db.select<Assignment[]>(
-      'SELECT * FROM assignments WHERE id = $1',
-      [id],
-    );
+    const updated = await db.select<Assignment[]>("SELECT * FROM assignments WHERE id = $1", [id]);
     if (updated[0]) {
       // Use 'upsert' with deleted_at set — the sync worker uses deleted_at to
       // signal deletion to Supabase (Requirement 8.2)
-      await enqueue(db, 'assignment', id, 'upsert', updated[0] as unknown as Record<string, unknown>);
+      await enqueue(
+        db,
+        "assignment",
+        id,
+        "upsert",
+        updated[0] as unknown as Record<string, unknown>,
+      );
+      const resources = await db.select<Array<{ name: string }>>(
+        "SELECT name FROM resources WHERE id = $1 LIMIT 1",
+        [resourceId],
+      );
+      const resourceName = resources[0]?.name ?? resourceId;
+      await recordActivity(db, {
+        workspaceId,
+        action: "assignment.delete",
+        entityType: "assignment",
+        entityId: id,
+        entityName: resourceName,
+        summary: `Usunieto przypisanie z "${resourceName}"`,
+        metadata: { resource_id: resourceId, assigned_user_id: userId },
+        timestamp: ts,
+      });
     }
   });
 }
@@ -264,12 +321,17 @@ export async function softDeleteAssignmentsForUser(
 
     // Enqueue each soft-deleted assignment for sync
     for (const { id } of active) {
-      const updated = await db.select<Assignment[]>(
-        'SELECT * FROM assignments WHERE id = $1',
-        [id],
-      );
+      const updated = await db.select<Assignment[]>("SELECT * FROM assignments WHERE id = $1", [
+        id,
+      ]);
       if (updated[0]) {
-        await enqueue(db, 'assignment', id, 'upsert', updated[0] as unknown as Record<string, unknown>);
+        await enqueue(
+          db,
+          "assignment",
+          id,
+          "upsert",
+          updated[0] as unknown as Record<string, unknown>,
+        );
       }
     }
   });

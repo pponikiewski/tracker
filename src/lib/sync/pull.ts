@@ -1,12 +1,19 @@
-import { getDb } from '@/lib/db/connection';
-import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/store/auth';
-import { lwwMerge } from './merge';
-import { enqueue } from './outbox';
-import { recalcCachedMinutesForResource } from '@/lib/db/queries';
-import type { Assignment, Resource, TimeEvent, Workspace, WorkspaceMembership } from '@/lib/db/types';
-import { ltreeToPath } from '@/lib/utils/ltree';
-import { tick } from './worker';
+import { getDb } from "@/lib/db/connection";
+import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/store/auth";
+import { lwwMerge } from "./merge";
+import { enqueue } from "./outbox";
+import { recalcCachedMinutesForResource } from "@/lib/db/queries";
+import type {
+  ActivityLogEntry,
+  Assignment,
+  Resource,
+  TimeEvent,
+  Workspace,
+  WorkspaceMembership,
+} from "@/lib/db/types";
+import { ltreeToPath } from "@/lib/utils/ltree";
+import { tick } from "./worker";
 
 const pulledForUser = new Set<string>();
 
@@ -20,8 +27,7 @@ export function resetInitialPullState(): void {
   pulledForUser.clear();
 }
 
-const toMs = (v: unknown): number =>
-  typeof v === 'string' ? Date.parse(v) : (v as number);
+const toMs = (v: unknown): number => (typeof v === "string" ? Date.parse(v) : (v as number));
 
 function cloudToLocalResource(c: Record<string, unknown>): Resource {
   // path may be in ltree format (dots + underscores) or legacy TEXT format (slashes + hyphens)
@@ -38,7 +44,7 @@ function cloudToLocalResource(c: Record<string, unknown>): Resource {
     workspace_id: c.workspace_id as string,
     parent_id: (c.parent_id as string | null) ?? null,
     name: c.name as string,
-    type: c.type as Resource['type'],
+    type: c.type as Resource["type"],
     color: (c.color as string | null) ?? null,
     path,
     cached_minutes: (c.cached_minutes as number) ?? 0,
@@ -83,7 +89,7 @@ function cloudToLocalMembership(c: Record<string, unknown>): WorkspaceMembership
   return {
     workspace_id: c.workspace_id as string,
     user_id: c.user_id as string,
-    role: c.role as WorkspaceMembership['role'],
+    role: c.role as WorkspaceMembership["role"],
     joined_at: toMs(c.joined_at),
     display_role: (c.display_role as string | null) ?? null,
     display_role_updated_at: c.display_role_updated_at ? toMs(c.display_role_updated_at) : null,
@@ -103,8 +109,25 @@ function cloudToLocalAssignment(c: Record<string, unknown>): Assignment {
   };
 }
 
+function cloudToLocalActivity(c: Record<string, unknown>): ActivityLogEntry {
+  return {
+    id: c.id as string,
+    workspace_id: c.workspace_id as string,
+    user_id: (c.user_id as string | null) ?? null,
+    action: c.action as string,
+    entity_type: c.entity_type as string,
+    entity_id: (c.entity_id as string | null) ?? null,
+    entity_name: (c.entity_name as string | null) ?? null,
+    summary: c.summary as string,
+    metadata: (c.metadata as string | null) ?? null,
+    created_at: toMs(c.created_at),
+    updated_at: toMs(c.updated_at),
+    deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
+  };
+}
+
 function resourceDepth(resource: Resource): number {
-  return resource.path.split('/').length;
+  return resource.path.split("/").length;
 }
 
 /**
@@ -112,13 +135,13 @@ function resourceDepth(resource: Resource): number {
  * New workspaces are created only from explicit UI actions.
  */
 export async function findAccessibleWorkspace(): Promise<string | null> {
-  if (!supabase) throw new Error('Supabase not configured');
+  if (!supabase) throw new Error("Supabase not configured");
 
   const { data: accessible, error: accessibleErr } = await supabase
-    .from('workspaces')
-    .select('id')
-    .is('deleted_at', null)
-    .order('created_at', { ascending: true })
+    .from("workspaces")
+    .select("id")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
     .limit(1);
 
   if (accessibleErr) throw new Error(accessibleErr.message);
@@ -152,10 +175,10 @@ async function rebuildAllPaths(): Promise<void> {
 
   for (const r of all) {
     const correctPath = computePath(r.id);
-    await db.execute(
-      `UPDATE resources SET path = $1 WHERE id = $2 AND path != $1`,
-      [correctPath, r.id],
-    );
+    await db.execute(`UPDATE resources SET path = $1 WHERE id = $2 AND path != $1`, [
+      correctPath,
+      r.id,
+    ]);
   }
 }
 
@@ -177,9 +200,9 @@ async function fetchAndWriteMissingResource(
   visiting.add(resourceId);
   const db = await getDb();
   const { data, error } = await supabase
-    .from('resources')
-    .select('*')
-    .eq('id', resourceId)
+    .from("resources")
+    .select("*")
+    .eq("id", resourceId)
     .maybeSingle();
 
   if (error || !data) return false;
@@ -266,7 +289,7 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
 
   const auth = useAuthStore.getState();
   if (isInitial) {
-    auth.setSyncStatus({ kind: 'initial-pull' });
+    auth.setSyncStatus({ kind: "initial-pull" });
   }
 
   // Step 1: Check whether the user already has a workspace. Do not create one
@@ -276,23 +299,22 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       await findAccessibleWorkspace();
     } catch (e) {
       auth.setSyncStatus({
-        kind: 'error',
-        message: e instanceof Error ? e.message : 'failed to check workspaces',
+        kind: "error",
+        message: e instanceof Error ? e.message : "failed to check workspaces",
       });
       return;
     }
   }
 
   // Step 2: Fetch workspaces + workspace_memberships in parallel (Req 7.5)
-  const [{ data: cloudWS, error: errWS }, { data: cloudMem, error: errMem }] =
-    await Promise.all([
-      supabase.from('workspaces').select('*'),
-      supabase.from('workspace_memberships').select('*'),
-    ]);
+  const [{ data: cloudWS, error: errWS }, { data: cloudMem, error: errMem }] = await Promise.all([
+    supabase.from("workspaces").select("*"),
+    supabase.from("workspace_memberships").select("*"),
+  ]);
 
   // Step 3: If workspace fetch fails — set error and stop (do NOT fetch resources/events)
   if (errWS || errMem) {
-    auth.setSyncStatus({ kind: 'error', message: (errWS ?? errMem)!.message });
+    auth.setSyncStatus({ kind: "error", message: (errWS ?? errMem)!.message });
     return;
   }
 
@@ -300,8 +322,9 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
 
   // Step 4: LWW merge workspaces → write to SQLite (Req 2.2, 7.6)
   // Exclude Local_Personal_Workspace (owner_id = 'local') — it must never be synced to Supabase
-  const localWS = (await db.select<Workspace[]>(`SELECT * FROM workspaces`))
-    .filter((w) => w.owner_id !== 'local');
+  const localWS = (await db.select<Workspace[]>(`SELECT * FROM workspaces`)).filter(
+    (w) => w.owner_id !== "local",
+  );
   const cloudWSLoc = (cloudWS ?? []).map((c) =>
     cloudToLocalWorkspace(c as Record<string, unknown>),
   );
@@ -320,20 +343,21 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       );
     }
     for (const w of wsMerge.pushOutbox) {
-      await enqueue(db, 'workspace', w.id, 'upsert', w as unknown as Record<string, unknown>);
+      await enqueue(db, "workspace", w.id, "upsert", w as unknown as Record<string, unknown>);
     }
   } catch (e) {
     auth.setSyncStatus({
-      kind: 'error',
-      message: e instanceof Error ? e.message : 'workspace write failed',
+      kind: "error",
+      message: e instanceof Error ? e.message : "workspace write failed",
     });
     return;
   }
 
   // Step 5: LWW merge memberships → write to SQLite (Req 2.2)
   // Exclude local memberships (user_id = 'local') — they must never be synced
-  const localMem = (await db.select<WorkspaceMembership[]>(`SELECT * FROM workspace_memberships`))
-    .filter((m) => m.user_id !== 'local');
+  const localMem = (
+    await db.select<WorkspaceMembership[]>(`SELECT * FROM workspace_memberships`)
+  ).filter((m) => m.user_id !== "local");
   const cloudMemLoc = (cloudMem ?? []).map((c) =>
     cloudToLocalMembership(c as Record<string, unknown>),
   );
@@ -359,8 +383,7 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
   try {
     for (const m of memMerge.writeSqlite) {
       const local = localMem.find(
-        (candidate) =>
-          candidate.workspace_id === m.workspace_id && candidate.user_id === m.user_id,
+        (candidate) => candidate.workspace_id === m.workspace_id && candidate.user_id === m.user_id,
       );
       const localDisplayRoleTs = local?.display_role_updated_at ?? 0;
       const cloudDisplayRoleTs = m.display_role_updated_at ?? 0;
@@ -389,9 +412,12 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       );
     }
     for (const m of memMerge.pushOutbox) {
-      if (m.user_id === userId && cloudMemLoc.some(
-        (cloud) => cloud.workspace_id === m.workspace_id && cloud.user_id === m.user_id,
-      )) {
+      if (
+        m.user_id === userId &&
+        cloudMemLoc.some(
+          (cloud) => cloud.workspace_id === m.workspace_id && cloud.user_id === m.user_id,
+        )
+      ) {
         continue;
       }
       // Strip synthetic id and updated_at (added only for lwwMerge) before enqueue —
@@ -407,62 +433,75 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
       };
       await enqueue(
         db,
-        'workspace_membership',
+        "workspace_membership",
         `${m.workspace_id}:${m.user_id}`,
-        'upsert',
+        "upsert",
         payload as unknown as Record<string, unknown>,
       );
     }
   } catch (e) {
     auth.setSyncStatus({
-      kind: 'error',
-      message: e instanceof Error ? e.message : 'membership write failed',
+      kind: "error",
+      message: e instanceof Error ? e.message : "membership write failed",
     });
     return;
   }
 
-// Treat "table not found" / "relation does not exist" errors as benign and
-// return an empty result set so Phase 5 users (without the Phase 6 tables
-// `assignments` and `profiles`) are not blocked by initial-pull failures.
-type SbError = { code?: string; message?: string } | null;
-function isMissingTable(err: SbError): boolean {
-  if (!err) return false;
-  return (
-    err.code === 'PGRST205' ||
-    err.code === '42P01' ||
-    (err.message?.toLowerCase().includes('could not find the table') ?? false)
-  );
-}
+  // Treat "table not found" / "relation does not exist" errors as benign and
+  // return an empty result set so Phase 5 users (without the Phase 6 tables
+  // `assignments` and `profiles`) are not blocked by initial-pull failures.
+  type SbError = { code?: string; message?: string } | null;
+  function isMissingTable(err: SbError): boolean {
+    if (!err) return false;
+    return (
+      err.code === "PGRST205" ||
+      err.code === "42P01" ||
+      (err.message?.toLowerCase().includes("could not find the table") ?? false)
+    );
+  }
 
   // Step 6: Fetch resources + events + assignments (Req 8.4)
   const [
     { data: cloudR, error: errR },
     { data: cloudE, error: errE },
     { data: cloudA, error: errA },
+    { data: cloudAct, error: errAct },
   ] = await Promise.all([
-    supabase.from('resources').select('*'),
-    supabase.from('events').select('*'),
-    supabase.from('assignments').select('*'),
+    supabase.from("resources").select("*"),
+    supabase.from("events").select("*"),
+    supabase.from("assignments").select("*"),
+    supabase.from("activity_log").select("*"),
   ]);
 
   // assignments is optional — degrade gracefully when the Phase 6 table is
   // missing instead of aborting the whole pull.
   const assignmentsMissing = isMissingTable(errA);
+  const activityLogMissing = isMissingTable(errAct);
   if (assignmentsMissing) {
     console.warn(
-      '[sync] `assignments` table not found in Supabase — skipping assignment sync. ' +
-        'Run the Phase 6 migration to enable team assignments.',
+      "[sync] `assignments` table not found in Supabase — skipping assignment sync. " +
+        "Run the Phase 6 migration to enable team assignments.",
+    );
+  }
+  if (activityLogMissing) {
+    console.warn(
+      "[sync] `activity_log` table not found in Supabase - skipping activity log sync. " +
+        "Run the activity-log migration to enable the shared team activity feed.",
     );
   }
 
   const errRWithoutMissing = isMissingTable(errR) ? null : errR;
   const errEWithoutMissing = isMissingTable(errE) ? null : errE;
   const errAWithoutMissing = assignmentsMissing ? null : errA;
+  const errActWithoutMissing = activityLogMissing ? null : errAct;
 
-  if (errRWithoutMissing || errEWithoutMissing || errAWithoutMissing) {
+  if (errRWithoutMissing || errEWithoutMissing || errAWithoutMissing || errActWithoutMissing) {
     auth.setSyncStatus({
-      kind: 'error',
-      message: (errRWithoutMissing ?? errEWithoutMissing ?? errAWithoutMissing)!.message,
+      kind: "error",
+      message: (errRWithoutMissing ??
+        errEWithoutMissing ??
+        errAWithoutMissing ??
+        errActWithoutMissing)!.message,
     });
     return;
   }
@@ -471,16 +510,16 @@ function isMissingTable(err: SbError): boolean {
   const localR = await db.select<Resource[]>(`SELECT * FROM resources`);
   const localE = await db.select<TimeEvent[]>(`SELECT * FROM events`);
   const localA = await db.select<Assignment[]>(`SELECT * FROM assignments`);
+  const localAct = await db.select<ActivityLogEntry[]>(`SELECT * FROM activity_log`);
 
-  const cloudRloc = (cloudR ?? []).map((c) =>
-    cloudToLocalResource(c as Record<string, unknown>),
-  );
-  const cloudEloc = (cloudE ?? []).map((c) =>
-    cloudToLocalEvent(c as Record<string, unknown>),
-  );
+  const cloudRloc = (cloudR ?? []).map((c) => cloudToLocalResource(c as Record<string, unknown>));
+  const cloudEloc = (cloudE ?? []).map((c) => cloudToLocalEvent(c as Record<string, unknown>));
   const cloudAloc = assignmentsMissing
     ? []
     : (cloudA ?? []).map((c) => cloudToLocalAssignment(c as Record<string, unknown>));
+  const cloudActLoc = activityLogMissing
+    ? []
+    : (cloudAct ?? []).map((c) => cloudToLocalActivity(c as Record<string, unknown>));
 
   const rMerge = lwwMerge(localR, cloudRloc);
   const eMerge = lwwMerge(localE, cloudEloc);
@@ -489,12 +528,16 @@ function isMissingTable(err: SbError): boolean {
   const aMerge = assignmentsMissing
     ? { writeSqlite: [] as Assignment[], pushOutbox: [] as Assignment[] }
     : lwwMerge(localA, cloudAloc);
+  const actMerge = activityLogMissing
+    ? { writeSqlite: [] as ActivityLogEntry[], pushOutbox: [] as ActivityLogEntry[] }
+    : lwwMerge(localAct, cloudActLoc);
   const hasPulledUiChanges =
     wsMerge.writeSqlite.length > 0 ||
     memMerge.writeSqlite.length > 0 ||
     rMerge.writeSqlite.length > 0 ||
     eMerge.writeSqlite.length > 0 ||
-    aMerge.writeSqlite.length > 0;
+    aMerge.writeSqlite.length > 0 ||
+    actMerge.writeSqlite.length > 0;
 
   try {
     const resourcesToWrite = [...rMerge.writeSqlite].sort(
@@ -514,10 +557,17 @@ function isMissingTable(err: SbError): boolean {
               created_at=excluded.created_at, updated_at=excluded.updated_at,
               deleted_at=excluded.deleted_at`,
           [
-            localResource.id, localResource.workspace_id, localResource.parent_id,
-            localResource.name, localResource.type, localResource.color,
-            localResource.path, localResource.cached_minutes,
-            localResource.created_at, localResource.updated_at, localResource.deleted_at,
+            localResource.id,
+            localResource.workspace_id,
+            localResource.parent_id,
+            localResource.name,
+            localResource.type,
+            localResource.color,
+            localResource.path,
+            localResource.cached_minutes,
+            localResource.created_at,
+            localResource.updated_at,
+            localResource.deleted_at,
           ],
         );
       } catch (error) {
@@ -551,8 +601,19 @@ function isMissingTable(err: SbError): boolean {
              user_id=excluded.user_id,
              created_at=excluded.created_at, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at`,
           [
-            e.id, e.workspace_id, e.resource_id, e.date, e.minutes, e.goal, e.topics, e.notes, e.report, e.user_id,
-            e.created_at, e.updated_at, e.deleted_at,
+            e.id,
+            e.workspace_id,
+            e.resource_id,
+            e.date,
+            e.minutes,
+            e.goal,
+            e.topics,
+            e.notes,
+            e.report,
+            e.user_id,
+            e.created_at,
+            e.updated_at,
+            e.deleted_at,
           ],
         );
       } catch (error) {
@@ -568,10 +629,10 @@ function isMissingTable(err: SbError): boolean {
 
     // Enqueue local-wins for push to cloud
     for (const r of rMerge.pushOutbox) {
-      await enqueue(db, 'resource', r.id, 'upsert', r as unknown as Record<string, unknown>);
+      await enqueue(db, "resource", r.id, "upsert", r as unknown as Record<string, unknown>);
     }
     for (const e of eMerge.pushOutbox) {
-      await enqueue(db, 'event', e.id, 'upsert', e as unknown as Record<string, unknown>);
+      await enqueue(db, "event", e.id, "upsert", e as unknown as Record<string, unknown>);
     }
 
     // Req 8.4: write cloud-wins assignments to SQLite
@@ -589,7 +650,50 @@ function isMissingTable(err: SbError): boolean {
     }
     // Req 9.4: enqueue local-wins assignments for push to cloud
     for (const a of aMerge.pushOutbox) {
-      await enqueue(db, 'assignment', a.id, 'upsert', a as unknown as Record<string, unknown>);
+      await enqueue(db, "assignment", a.id, "upsert", a as unknown as Record<string, unknown>);
+    }
+
+    for (const entry of actMerge.writeSqlite) {
+      await db.execute(
+        `INSERT INTO activity_log
+           (id, workspace_id, user_id, action, entity_type, entity_id, entity_name, summary, metadata, created_at, updated_at, deleted_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id=excluded.workspace_id,
+           user_id=excluded.user_id,
+           action=excluded.action,
+           entity_type=excluded.entity_type,
+           entity_id=excluded.entity_id,
+           entity_name=excluded.entity_name,
+           summary=excluded.summary,
+           metadata=excluded.metadata,
+           created_at=excluded.created_at,
+           updated_at=excluded.updated_at,
+           deleted_at=excluded.deleted_at`,
+        [
+          entry.id,
+          entry.workspace_id,
+          entry.user_id,
+          entry.action,
+          entry.entity_type,
+          entry.entity_id,
+          entry.entity_name,
+          entry.summary,
+          entry.metadata,
+          entry.created_at,
+          entry.updated_at,
+          entry.deleted_at,
+        ],
+      );
+    }
+    for (const entry of actMerge.pushOutbox) {
+      await enqueue(
+        db,
+        "activity_log",
+        entry.id,
+        "upsert",
+        entry as unknown as Record<string, unknown>,
+      );
     }
 
     // Req 8.7: rebuild materialized paths from parent_id chains
@@ -605,15 +709,15 @@ function isMissingTable(err: SbError): boolean {
   } catch (e) {
     // Req 8.9: on failure, set error status, do NOT mark as pulled (allow retry)
     auth.setSyncStatus({
-      kind: 'error',
-      message: e instanceof Error ? `pull failed: ${e.message}` : 'pull failed',
+      kind: "error",
+      message: e instanceof Error ? `pull failed: ${e.message}` : "pull failed",
     });
     return;
   }
 
   // Req 8.1: mark as pulled for this process session only after success
   if (isInitial) pulledForUser.add(userId);
-  auth.setSyncStatus({ kind: 'idle' });
+  auth.setSyncStatus({ kind: "idle" });
   auth.setLastSyncAt(Date.now());
 
   if (isInitial || hasPulledUiChanges) {
@@ -630,7 +734,7 @@ function isMissingTable(err: SbError): boolean {
       aMerge.writeSqlite.length > 0;
 
     if (wsChanged) {
-      const { useWorkspaceStore } = await import('@/store/workspace');
+      const { useWorkspaceStore } = await import("@/store/workspace");
       await useWorkspaceStore.getState().refresh();
       const workspaceState = useWorkspaceStore.getState();
       const activeWorkspaceStillExists =
@@ -643,8 +747,11 @@ function isMissingTable(err: SbError): boolean {
       }
     }
     if (projectsChanged) {
-      const { useProjects } = await import('@/store/projects');
+      const { useProjects } = await import("@/store/projects");
       await useProjects.getState().refresh({ showLoading: false });
+    }
+    if (actMerge.writeSqlite.length > 0 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("tracker:activity-log-changed"));
     }
   }
 

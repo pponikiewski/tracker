@@ -2,6 +2,7 @@ import { getDb } from "./connection";
 import type { Workspace, WorkspaceMembership } from "./types";
 import { enqueue } from "@/lib/sync/outbox";
 import { withTx } from "./tx";
+import { recordActivity } from "@/lib/activity/activityLog";
 
 const now = () => Date.now();
 
@@ -9,17 +10,12 @@ const now = () => Date.now();
 
 export async function listWorkspaces(): Promise<Workspace[]> {
   const db = await getDb();
-  return db.select<Workspace[]>(
-    "SELECT * FROM workspaces ORDER BY created_at ASC",
-  );
+  return db.select<Workspace[]>("SELECT * FROM workspaces ORDER BY created_at ASC");
 }
 
 export async function getWorkspace(id: string): Promise<Workspace | null> {
   const db = await getDb();
-  const rows = await db.select<Workspace[]>(
-    "SELECT * FROM workspaces WHERE id = $1 LIMIT 1",
-    [id],
-  );
+  const rows = await db.select<Workspace[]>("SELECT * FROM workspaces WHERE id = $1 LIMIT 1", [id]);
   return rows[0] ?? null;
 }
 
@@ -106,7 +102,13 @@ export async function createWorkspace(input: {
       display_role_updated_at: null,
     };
 
-    await enqueue(db, "workspace", input.id, "upsert", workspaceRow as unknown as Record<string, unknown>);
+    await enqueue(
+      db,
+      "workspace",
+      input.id,
+      "upsert",
+      workspaceRow as unknown as Record<string, unknown>,
+    );
     await enqueue(
       db,
       "workspace_membership",
@@ -114,6 +116,17 @@ export async function createWorkspace(input: {
       "upsert",
       membershipRow as unknown as Record<string, unknown>,
     );
+
+    await recordActivity(db, {
+      workspaceId: input.id,
+      action: "workspace.create",
+      entityType: "workspace",
+      entityId: input.id,
+      entityName: input.name,
+      summary: `Utworzono workspace "${input.name}"`,
+      metadata: { owner_id: input.ownerId },
+      timestamp: ts,
+    });
   });
 }
 
@@ -124,18 +137,27 @@ export async function createWorkspace(input: {
 export async function renameWorkspace(id: string, name: string): Promise<void> {
   await withTx(async (db) => {
     const ts = now();
+    const previous = await getWorkspace(id);
 
-    await db.execute(
-      "UPDATE workspaces SET name = $1, updated_at = $2 WHERE id = $3",
-      [name, ts, id],
-    );
+    await db.execute("UPDATE workspaces SET name = $1, updated_at = $2 WHERE id = $3", [
+      name,
+      ts,
+      id,
+    ]);
 
-    const rows = await db.select<Workspace[]>(
-      "SELECT * FROM workspaces WHERE id = $1",
-      [id],
-    );
+    const rows = await db.select<Workspace[]>("SELECT * FROM workspaces WHERE id = $1", [id]);
     if (rows[0]) {
       await enqueue(db, "workspace", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+      await recordActivity(db, {
+        workspaceId: id,
+        action: "workspace.rename",
+        entityType: "workspace",
+        entityId: id,
+        entityName: name,
+        summary: `Zmieniono nazwe workspace "${previous?.name ?? id}" na "${name}"`,
+        metadata: { from: previous?.name ?? null, to: name },
+        timestamp: ts,
+      });
     }
   });
 }
@@ -148,17 +170,23 @@ export async function softDeleteWorkspace(id: string): Promise<void> {
   await withTx(async (db) => {
     const ts = now();
 
-    await db.execute(
-      "UPDATE workspaces SET deleted_at = $1, updated_at = $1 WHERE id = $2",
-      [ts, id],
-    );
+    await db.execute("UPDATE workspaces SET deleted_at = $1, updated_at = $1 WHERE id = $2", [
+      ts,
+      id,
+    ]);
 
-    const rows = await db.select<Workspace[]>(
-      "SELECT * FROM workspaces WHERE id = $1",
-      [id],
-    );
+    const rows = await db.select<Workspace[]>("SELECT * FROM workspaces WHERE id = $1", [id]);
     if (rows[0]) {
       await enqueue(db, "workspace", id, "upsert", rows[0] as unknown as Record<string, unknown>);
+      await recordActivity(db, {
+        workspaceId: id,
+        action: "workspace.delete",
+        entityType: "workspace",
+        entityId: id,
+        entityName: rows[0].name,
+        summary: `Usunieto workspace "${rows[0].name}"`,
+        timestamp: ts,
+      });
     }
   });
 }
@@ -243,6 +271,18 @@ export async function updateMembershipDisplayRole(
         "upsert",
         rows[0] as unknown as Record<string, unknown>,
       );
+      await recordActivity(db, {
+        workspaceId,
+        action: "member.display_role",
+        entityType: "workspace_membership",
+        entityId: userId,
+        entityName: userId,
+        summary: displayRole
+          ? `Ustawiono role opisowa dla uzytkownika: ${displayRole}`
+          : "Wyczyszczono role opisowa uzytkownika",
+        metadata: { user_id: userId, display_role: displayRole },
+        timestamp: updatedAt,
+      });
     }
   });
 }
@@ -253,18 +293,25 @@ export async function updateMembershipDisplayRole(
  */
 export async function deleteMembership(workspaceId: string, userId: string): Promise<void> {
   await withTx(async (db) => {
-    await db.execute(
-      "DELETE FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2",
-      [workspaceId, userId],
-    );
+    await db.execute("DELETE FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2", [
+      workspaceId,
+      userId,
+    ]);
 
-    await enqueue(
-      db,
-      "workspace_membership",
-      `${workspaceId}:${userId}`,
-      "delete",
-      { workspace_id: workspaceId, user_id: userId },
-    );
+    await enqueue(db, "workspace_membership", `${workspaceId}:${userId}`, "delete", {
+      workspace_id: workspaceId,
+      user_id: userId,
+    });
+
+    await recordActivity(db, {
+      workspaceId,
+      action: "member.remove",
+      entityType: "workspace_membership",
+      entityId: userId,
+      entityName: userId,
+      summary: "Usunieto czlonka z workspace",
+      metadata: { user_id: userId },
+    });
   });
 }
 
@@ -330,10 +377,7 @@ export async function listLocalWorkspaces(): Promise<Workspace[]> {
  * After this runs, the workspace becomes a regular cloud workspace:
  * the user can rename it, generate join codes, invite members, etc.
  */
-export async function claimLocalWorkspace(
-  workspaceId: string,
-  userId: string,
-): Promise<void> {
+export async function claimLocalWorkspace(workspaceId: string, userId: string): Promise<void> {
   await withTx(async (db) => {
     const ts = now();
 
@@ -359,12 +403,17 @@ export async function claimLocalWorkspace(
     );
 
     // 3. Enqueue the workspace for push.
-    const ws = await db.select<Workspace[]>(
-      "SELECT * FROM workspaces WHERE id = $1",
-      [workspaceId],
-    );
+    const ws = await db.select<Workspace[]>("SELECT * FROM workspaces WHERE id = $1", [
+      workspaceId,
+    ]);
     if (ws[0]) {
-      await enqueue(db, "workspace", workspaceId, "upsert", ws[0] as unknown as Record<string, unknown>);
+      await enqueue(
+        db,
+        "workspace",
+        workspaceId,
+        "upsert",
+        ws[0] as unknown as Record<string, unknown>,
+      );
     }
 
     // 4. Enqueue the new owner membership.

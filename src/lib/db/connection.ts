@@ -1,5 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
-import { SCHEMA_SQL } from "./schema";
+import { ACTIVITY_LOG_SQL, SCHEMA_SQL } from "./schema";
 
 const DB_URL = "sqlite:tracker.db";
 
@@ -44,7 +44,9 @@ export async function runPhase5Migration(db: Database): Promise<void> {
     deleted_at  INTEGER
   )`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_workspaces_active ON workspaces(deleted_at) WHERE deleted_at IS NULL`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_workspaces_active ON workspaces(deleted_at) WHERE deleted_at IS NULL`,
+  );
 
   // Step 1b: Create workspace_memberships table
   await db.execute(`CREATE TABLE IF NOT EXISTS workspace_memberships (
@@ -92,19 +94,17 @@ export async function runPhase5Migration(db: Database): Promise<void> {
   await db.execute(
     `ALTER TABLE resources ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE`,
   );
-  await db.execute(
-    `UPDATE resources SET workspace_id = ? WHERE workspace_id IS NULL`,
-    [localWorkspaceId],
-  );
+  await db.execute(`UPDATE resources SET workspace_id = ? WHERE workspace_id IS NULL`, [
+    localWorkspaceId,
+  ]);
 
   // Step 5: Add workspace_id to events and backfill
   await db.execute(
     `ALTER TABLE events ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE`,
   );
-  await db.execute(
-    `UPDATE events SET workspace_id = ? WHERE workspace_id IS NULL`,
-    [localWorkspaceId],
-  );
+  await db.execute(`UPDATE events SET workspace_id = ? WHERE workspace_id IS NULL`, [
+    localWorkspaceId,
+  ]);
 }
 
 /**
@@ -132,10 +132,16 @@ export async function runPhase6Migration(db: Database): Promise<void> {
     updated_at   INTEGER NOT NULL,
     deleted_at   INTEGER
   )`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_resource  ON assignments(resource_id)`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_assignments_resource  ON assignments(resource_id)`,
+  );
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_user      ON assignments(user_id)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_workspace ON assignments(workspace_id)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_assignments_active    ON assignments(deleted_at) WHERE deleted_at IS NULL`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_assignments_workspace ON assignments(workspace_id)`,
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_assignments_active    ON assignments(deleted_at) WHERE deleted_at IS NULL`,
+  );
 
   // Step 2: Create profiles_cache table
   await db.execute(`CREATE TABLE IF NOT EXISTS profiles_cache (
@@ -205,11 +211,8 @@ async function purgeLocalOutboxRows(db: Database): Promise<void> {
   }
 
   if (toDelete.length > 0) {
-    const placeholders = toDelete.map((_, i) => `$${i + 1}`).join(',');
-    await db.execute(
-      `DELETE FROM sync_outbox WHERE id IN (${placeholders})`,
-      toDelete,
-    );
+    const placeholders = toDelete.map((_, i) => `$${i + 1}`).join(",");
+    await db.execute(`DELETE FROM sync_outbox WHERE id IN (${placeholders})`, toDelete);
     console.info(
       `[sync] purged ${toDelete.length} outbox row(s) targeting Local_Personal_Workspace.`,
     );
@@ -225,21 +228,62 @@ export async function getDb(): Promise<Database> {
   await runPhase6Migration(db);
   await ensureMembershipDisplayRoleColumns(db);
   await ensureOutboxUserIdColumn(db);
+  await ensureActivityLogSchema(db);
+  await ensureOutboxAllowsActivityLog(db);
   await purgeLocalOutboxRows(db);
   await purgeLegacyResourceSortOrderFromOutbox(db);
   cached = db;
   return db;
 }
 
+async function ensureActivityLogSchema(db: Database): Promise<void> {
+  const statements = ACTIVITY_LOG_SQL.split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const statement of statements) {
+    await db.execute(statement);
+  }
+}
+
+async function ensureOutboxAllowsActivityLog(db: Database): Promise<void> {
+  const rows = await db.select<Array<{ sql: string | null }>>(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sync_outbox' LIMIT 1`,
+  );
+  const sql = rows[0]?.sql ?? "";
+  if (sql.includes("'activity_log'")) return;
+
+  await db.execute(`CREATE TABLE IF NOT EXISTS sync_outbox_new (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity        TEXT NOT NULL CHECK (entity IN ('resource','event','workspace','workspace_membership','assignment','activity_log')),
+    entity_id     TEXT NOT NULL,
+    op            TEXT NOT NULL CHECK (op IN ('upsert','delete')),
+    payload       TEXT NOT NULL,
+    enqueued_at   INTEGER NOT NULL,
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    next_retry_at INTEGER,
+    user_id       TEXT
+  )`);
+  await db.execute(`INSERT INTO sync_outbox_new
+    (id, entity, entity_id, op, payload, enqueued_at, attempts, last_error, next_retry_at, user_id)
+    SELECT id, entity, entity_id, op, payload, enqueued_at, attempts, last_error, next_retry_at, user_id
+    FROM sync_outbox`);
+  await db.execute(`DROP TABLE sync_outbox`);
+  await db.execute(`ALTER TABLE sync_outbox_new RENAME TO sync_outbox`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS sync_outbox_ready ON sync_outbox(next_retry_at)`);
+}
+
 async function ensureMembershipDisplayRoleColumns(db: Database): Promise<void> {
   type PragmaRow = { name: string };
   const cols = await db.select<PragmaRow[]>("PRAGMA table_info('workspace_memberships')");
   const names = new Set(cols.map((c) => c.name));
-  if (!names.has('display_role')) {
-    await db.execute('ALTER TABLE workspace_memberships ADD COLUMN display_role TEXT');
+  if (!names.has("display_role")) {
+    await db.execute("ALTER TABLE workspace_memberships ADD COLUMN display_role TEXT");
   }
-  if (!names.has('display_role_updated_at')) {
-    await db.execute('ALTER TABLE workspace_memberships ADD COLUMN display_role_updated_at INTEGER');
+  if (!names.has("display_role_updated_at")) {
+    await db.execute(
+      "ALTER TABLE workspace_memberships ADD COLUMN display_role_updated_at INTEGER",
+    );
   }
 }
 
@@ -259,7 +303,7 @@ async function purgeLegacyResourceSortOrderFromOutbox(db: Database): Promise<voi
   for (const row of rows) {
     try {
       const payload = JSON.parse(row.payload) as Record<string, unknown>;
-      if (!Object.prototype.hasOwnProperty.call(payload, 'sort_order')) continue;
+      if (!Object.prototype.hasOwnProperty.call(payload, "sort_order")) continue;
       delete payload.sort_order;
       await db.execute(
         `UPDATE sync_outbox
@@ -286,8 +330,8 @@ async function purgeLegacyResourceSortOrderFromOutbox(db: Database): Promise<voi
 async function ensureOutboxUserIdColumn(db: Database): Promise<void> {
   type PragmaRow = { name: string };
   const cols = await db.select<PragmaRow[]>("PRAGMA table_info('sync_outbox')");
-  if (cols.some((c) => c.name === 'user_id')) return;
-  await db.execute('ALTER TABLE sync_outbox ADD COLUMN user_id TEXT');
+  if (cols.some((c) => c.name === "user_id")) return;
+  await db.execute("ALTER TABLE sync_outbox ADD COLUMN user_id TEXT");
 }
 
 export async function closeDb(): Promise<void> {
@@ -311,6 +355,7 @@ export async function closeDb(): Promise<void> {
 export async function resetUserScopedData(): Promise<void> {
   const db = await getDb();
 
+  await db.execute(`DELETE FROM activity_log`);
   await db.execute(`DELETE FROM profiles_cache`);
   await db.execute(`DELETE FROM assignments`);
   await db.execute(`DELETE FROM events`);
@@ -320,5 +365,5 @@ export async function resetUserScopedData(): Promise<void> {
   // Drop workspaces that are not Local_Personal_Workspace.
   await db.execute(`DELETE FROM workspaces WHERE owner_id != 'local'`);
   await db.execute(`DELETE FROM sync_outbox WHERE user_id IS NULL`);
-  console.info('[db] resetUserScopedData: cleared non-local data for user switch');
+  console.info("[db] resetUserScopedData: cleared non-local data for user switch");
 }
