@@ -80,10 +80,24 @@ export function mapResourceToCloud(
 ): Record<string, unknown> {
   const base = mapToCloud(data, userId);
   const rawPath = data.path;
+  const mapped: Record<string, unknown> = {
+    id: base.id,
+    workspace_id: base.workspace_id,
+    parent_id: base.parent_id,
+    name: base.name,
+    type: base.type,
+    color: base.color,
+    path: base.path,
+    cached_minutes: base.cached_minutes,
+    user_id: base.user_id,
+    created_at: base.created_at,
+    updated_at: base.updated_at,
+    deleted_at: base.deleted_at,
+  };
   if (typeof rawPath === 'string' && rawPath.length > 0) {
-    base.path = pathToLtree(rawPath);
+    mapped.path = pathToLtree(rawPath);
   }
-  return base;
+  return mapped;
 }
 
 // Exported for property tests (Property 10)
@@ -122,6 +136,9 @@ function validateRowTimestamps(data: Record<string, unknown>): string | null {
 
 function validateMembershipTimestamps(data: Record<string, unknown>): string | null {
   if (!isValidTimestamp(data.joined_at)) return `invalid joined_at: ${String(data.joined_at)}`;
+  if (data.display_role_updated_at != null && !isValidTimestamp(data.display_role_updated_at)) {
+    return `invalid display_role_updated_at: ${String(data.display_role_updated_at)}`;
+  }
   return null;
 }
 
@@ -201,6 +218,10 @@ async function flushEntity(
         const mapped = {
           ...data,
           joined_at: new Date(data.joined_at as number).toISOString(),
+          display_role_updated_at:
+            data.display_role_updated_at != null
+              ? new Date(data.display_role_updated_at as number).toISOString()
+              : null,
         };
         const { error } = await supabase
           .from('workspace_memberships')

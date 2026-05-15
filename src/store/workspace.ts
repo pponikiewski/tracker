@@ -51,6 +51,11 @@ interface WorkspaceState {
   setActiveWorkspace: (id: string) => Promise<void>;
   restoreActiveWorkspace: (userId: string | null) => Promise<void>;
   removeMember: (workspaceId: string, userId: string) => Promise<void>;
+  updateMemberDisplayRole: (
+    workspaceId: string,
+    userId: string,
+    displayRole: string | null,
+  ) => Promise<void>;
   generateJoinCode: (workspaceId: string) => Promise<JoinCode>;
   listActiveJoinCodes: (workspaceId: string) => Promise<JoinCode[]>;
   revokeJoinCode: (code: string) => Promise<void>;
@@ -271,6 +276,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       await get().refresh();
     },
 
+    // ---- updateMemberDisplayRole ----
+
+    updateMemberDisplayRole: async (workspaceId, userId, displayRole) => {
+      if (!supabase) throw new Error('Supabase not configured');
+      const displayRoleUpdatedAtMs = Date.now();
+      const displayRoleUpdatedAt = new Date(displayRoleUpdatedAtMs).toISOString();
+
+      const { error } = await supabase
+        .from('workspace_memberships')
+        .update({
+          display_role: displayRole,
+          display_role_updated_at: displayRoleUpdatedAt,
+        })
+        .match({ workspace_id: workspaceId, user_id: userId });
+
+      if (error) throw new Error(error.message);
+
+      await workspaceQueries.updateMembershipDisplayRole(
+        workspaceId,
+        userId,
+        displayRole,
+        displayRoleUpdatedAtMs,
+      );
+      await get().refresh();
+    },
+
     // ---- join codes ----
 
     generateJoinCode: async (workspaceId: string) => {
@@ -331,6 +362,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         user_id: string;
         role: 'owner' | 'member';
         joined_at: string;
+        display_role?: string | null;
+        display_role_updated_at?: string | null;
       };
 
       await workspaceQueries.upsertWorkspaceLocal({
@@ -349,6 +382,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         user_id: membership.user_id,
         role: membership.role,
         joined_at: Date.parse(membership.joined_at),
+        display_role: membership.display_role ?? null,
+        display_role_updated_at: membership.display_role_updated_at
+          ? Date.parse(membership.display_role_updated_at)
+          : null,
       });
 
       await get().refresh();
@@ -378,4 +415,3 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     },
   };
 });
-

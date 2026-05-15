@@ -13,6 +13,11 @@ import { formatMinutes } from "@/lib/utils/time";
 import { todayIso } from "@/lib/utils/time";
 import { daysAgoIso } from "@/lib/analytics/aggregate";
 import { downloadCsv, downloadText } from "@/lib/utils/csv";
+import { ChevronRight } from "lucide-react";
+import { ContextMenu, type MenuEntry } from "@/components/ContextMenu";
+import { useAuthStore } from "@/store/auth";
+import type { WorkspaceMembership } from "@/lib/db/types";
+import { PromptModal } from "@/components/PromptModal";
 
 // ---- Date range presets ----
 
@@ -39,48 +44,75 @@ function getPresetRange(preset: Exclude<Preset, "custom">): DateRange {
 
 interface MemberRowItemProps {
   row: MemberRow;
+  displayRole?: string | null;
+  onContextMenu?: (event: React.MouseEvent, userId: string) => void;
 }
 
-function MemberRowItem({ row }: MemberRowItemProps) {
+function MemberRowItem({ row, displayRole, onContextMenu }: MemberRowItemProps) {
   const [expanded, setExpanded] = useState(false);
   const getProfile = useProfileStore((s) => s.getProfile);
   const profile = getProfile(row.userId);
+  const hasBreakdown = row.projectBreakdown.length > 0;
+  const rowClassName =
+    "flex w-full items-center gap-3 px-4 py-3 bg-neutral-800 text-left";
+  const rowContent = (
+    <>
+      <AvatarBadge
+        userId={row.userId}
+        displayName={profile.display_name}
+        avatarUrl={profile.avatar_url}
+        size="sm"
+      />
+      <span className="flex-1 min-w-0">
+        <span className="block truncate text-sm text-neutral-100">{profile.display_name}</span>
+        <span
+          className={`mt-0.5 block min-h-4 truncate text-xs ${
+            displayRole ? "text-blue-300" : "text-transparent"
+          }`}
+          aria-hidden={!displayRole}
+        >
+          {displayRole ?? "rola"}
+        </span>
+      </span>
+      <span className="text-sm font-medium text-neutral-200 shrink-0 tabular-nums">
+        {row.totalMinutes === 0 ? "0 min" : formatMinutes(row.totalMinutes)}
+      </span>
+      {hasBreakdown ? (
+        <ChevronRight
+          aria-hidden="true"
+          size={16}
+          className={`ml-2 shrink-0 text-neutral-500 transition-transform ${
+            expanded ? "rotate-90" : ""
+          }`}
+        />
+      ) : (
+        <span className="ml-2 w-4 shrink-0" />
+      )}
+    </>
+  );
 
   return (
     <li className="border border-neutral-700 rounded overflow-hidden">
       {/* Main row */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-neutral-800 hover:bg-neutral-750 transition-colors">
-        <AvatarBadge
-          userId={row.userId}
-          displayName={profile.display_name}
-          avatarUrl={profile.avatar_url}
-          size="sm"
-        />
-        <span className="flex-1 text-sm text-neutral-100 truncate min-w-0">
-          {profile.display_name}
-        </span>
-        <span className="text-sm font-medium text-neutral-200 shrink-0 tabular-nums">
-          {row.totalMinutes === 0 ? "0 min" : formatMinutes(row.totalMinutes)}
-        </span>
-        {row.projectBreakdown.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="ml-2 text-neutral-500 hover:text-neutral-200 transition-colors shrink-0 text-xs"
-            aria-label={expanded ? "Zwiń" : "Rozwiń"}
-            aria-expanded={expanded}
-          >
-            {expanded ? "▲" : "▼"}
-          </button>
-        )}
-        {row.projectBreakdown.length === 0 && (
-          // Spacer to keep alignment consistent
-          <span className="ml-2 w-4 shrink-0" />
-        )}
-      </div>
+      {hasBreakdown ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          onContextMenu={(event) => onContextMenu?.(event, row.userId)}
+          className={`${rowClassName} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset`}
+          aria-label={`${expanded ? "Zwiń" : "Rozwiń"} ${profile.display_name}`}
+          aria-expanded={expanded}
+        >
+          {rowContent}
+        </button>
+      ) : (
+        <div className={rowClassName} onContextMenu={(event) => onContextMenu?.(event, row.userId)}>
+          {rowContent}
+        </div>
+      )}
 
       {/* Per-project breakdown */}
-      {expanded && row.projectBreakdown.length > 0 && (
+      {expanded && hasBreakdown && (
         <ul className="border-t border-neutral-700 bg-neutral-900 divide-y divide-neutral-800">
           {row.projectBreakdown.map((proj) => (
             <li key={proj.resourceId} className="flex items-center justify-between px-4 py-2 pl-12">
@@ -106,8 +138,11 @@ function MemberRowItem({ row }: MemberRowItemProps) {
  * Requirements: 6.2, 6.3, 6.4, 6.6, 6.8, 6.9
  */
 export function TeamView() {
+  const authState = useAuthStore((s) => s.state);
+  const currentUserId = authState.kind === "authed" ? authState.user.id : null;
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const memberships = useWorkspaceStore((s) => s.memberships);
+  const updateMemberDisplayRole = useWorkspaceStore((s) => s.updateMemberDisplayRole);
   const fetchProfiles = useProfileStore((s) => s.fetchProfiles);
   const getProfile = useProfileStore((s) => s.getProfile);
 
@@ -123,6 +158,21 @@ export function TeamView() {
   const [rows, setRows] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [roleBusyUserId, setRoleBusyUserId] = useState<string | null>(null);
+  const [roleMenu, setRoleMenu] = useState<{
+    x: number;
+    y: number;
+    userId: string;
+  } | null>(null);
+  const [rolePromptMember, setRolePromptMember] = useState<WorkspaceMembership | null>(null);
+
+  const workspaceMembers = useMemo(
+    () => memberships.filter((member) => member.workspace_id === activeWorkspaceId),
+    [activeWorkspaceId, memberships],
+  );
+
+  const currentMembership = workspaceMembers.find((member) => member.user_id === currentUserId);
+  const isOwner = currentMembership?.role === "owner";
 
   // ---- Load member rows ----
   const loadRows = useCallback(async () => {
@@ -155,13 +205,11 @@ export function TeamView() {
   // Also fetch profiles for all workspace members upfront (for members with 0 events)
   useEffect(() => {
     if (!activeWorkspaceId) return;
-    const memberIds = memberships
-      .filter((m) => m.workspace_id === activeWorkspaceId)
-      .map((m) => m.user_id);
+    const memberIds = workspaceMembers.map((m) => m.user_id);
     if (memberIds.length > 0) {
       void fetchProfiles(memberIds);
     }
-  }, [activeWorkspaceId, memberships, fetchProfiles]);
+  }, [activeWorkspaceId, workspaceMembers, fetchProfiles]);
 
   const reportProfiles: TeamReportProfile[] = useMemo(
     () =>
@@ -190,6 +238,51 @@ export function TeamView() {
       teamRowsToMarkdown(rows, reportProfiles, dateRange),
     );
   };
+
+  const handleMemberContextMenu = useCallback(
+    (event: React.MouseEvent, userId: string) => {
+      if (!isOwner) return;
+      event.preventDefault();
+      setRoleMenu({ x: event.clientX, y: event.clientY, userId });
+    },
+    [isOwner],
+  );
+
+  const handleDisplayRoleSave = async (membership: WorkspaceMembership, value: string | null) => {
+    if (!activeWorkspaceId) return;
+    setRoleBusyUserId(membership.user_id);
+    setError(null);
+    try {
+      await updateMemberDisplayRole(activeWorkspaceId, membership.user_id, value);
+      setRolePromptMember(null);
+    } catch (changeError) {
+      setError(changeError instanceof Error ? changeError.message : "Nieznany błąd");
+    } finally {
+      setRoleBusyUserId(null);
+    }
+  };
+
+  const roleMenuMembership = roleMenu
+    ? workspaceMembers.find((member) => member.user_id === roleMenu.userId)
+    : null;
+  const roleMenuItems: MenuEntry[] = roleMenuMembership
+    ? [
+        {
+          label: roleMenuMembership.display_role ? "Edytuj rolę" : "Nadaj rolę",
+          disabled: roleBusyUserId === roleMenuMembership.user_id,
+          onClick: () => setRolePromptMember(roleMenuMembership),
+        },
+        ...(roleMenuMembership.display_role
+          ? [
+              {
+                label: "Usuń rolę",
+                disabled: roleBusyUserId === roleMenuMembership.user_id,
+                onClick: () => void handleDisplayRoleSave(roleMenuMembership, null),
+              },
+            ]
+          : []),
+      ]
+    : [];
 
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
@@ -275,11 +368,36 @@ export function TeamView() {
         ) : (
           <ul className="space-y-2">
             {rows.map((row) => (
-              <MemberRowItem key={row.userId} row={row} />
+              <MemberRowItem
+                key={row.userId}
+                row={row}
+                displayRole={
+                  workspaceMembers.find((member) => member.user_id === row.userId)?.display_role
+                }
+                onContextMenu={handleMemberContextMenu}
+              />
             ))}
           </ul>
         )}
       </main>
+      {roleMenu && roleMenuItems.length > 0 && (
+        <ContextMenu
+          x={roleMenu.x}
+          y={roleMenu.y}
+          items={roleMenuItems}
+          onClose={() => setRoleMenu(null)}
+        />
+      )}
+      {rolePromptMember && (
+        <PromptModal
+          title="Nadaj rolę"
+          placeholder="Rola"
+          initialValue={rolePromptMember.display_role ?? ""}
+          confirmLabel="Zapisz"
+          onCancel={() => setRolePromptMember(null)}
+          onConfirm={(value) => void handleDisplayRoleSave(rolePromptMember, value)}
+        />
+      )}
     </div>
   );
 }

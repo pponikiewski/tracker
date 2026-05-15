@@ -85,6 +85,8 @@ export interface WorkspaceMembership {
   user_id: string;
   role: 'owner' | 'member';
   joined_at: number;
+  display_role?: string | null;
+  display_role_updated_at?: number | null;
 }
 
 export interface Invite {

@@ -52,6 +52,8 @@ export async function runPhase5Migration(db: Database): Promise<void> {
     user_id       TEXT NOT NULL,
     role          TEXT NOT NULL CHECK (role IN ('owner', 'member')),
     joined_at     INTEGER NOT NULL,
+    display_role  TEXT,
+    display_role_updated_at INTEGER,
     PRIMARY KEY (workspace_id, user_id)
   )`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_wm_user ON workspace_memberships(user_id)`);
@@ -221,10 +223,57 @@ export async function getDb(): Promise<Database> {
   await db.execute(SCHEMA_SQL);
   await runPhase5Migration(db);
   await runPhase6Migration(db);
+  await ensureMembershipDisplayRoleColumns(db);
   await ensureOutboxUserIdColumn(db);
   await purgeLocalOutboxRows(db);
+  await purgeLegacyResourceSortOrderFromOutbox(db);
   cached = db;
   return db;
+}
+
+async function ensureMembershipDisplayRoleColumns(db: Database): Promise<void> {
+  type PragmaRow = { name: string };
+  const cols = await db.select<PragmaRow[]>("PRAGMA table_info('workspace_memberships')");
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has('display_role')) {
+    await db.execute('ALTER TABLE workspace_memberships ADD COLUMN display_role TEXT');
+  }
+  if (!names.has('display_role_updated_at')) {
+    await db.execute('ALTER TABLE workspace_memberships ADD COLUMN display_role_updated_at INTEGER');
+  }
+}
+
+/**
+ * One-shot cleanup for dev builds that briefly had a local resources.sort_order
+ * column before the Supabase schema did. Old outbox payloads with that field
+ * fail PostgREST schema-cache validation forever until retried with a cleaned
+ * payload.
+ */
+async function purgeLegacyResourceSortOrderFromOutbox(db: Database): Promise<void> {
+  const rows = await db.select<Array<{ id: number; payload: string }>>(
+    `SELECT id, payload
+       FROM sync_outbox
+      WHERE entity = 'resource'
+        AND payload LIKE '%"sort_order"%'`,
+  );
+  for (const row of rows) {
+    try {
+      const payload = JSON.parse(row.payload) as Record<string, unknown>;
+      if (!Object.prototype.hasOwnProperty.call(payload, 'sort_order')) continue;
+      delete payload.sort_order;
+      await db.execute(
+        `UPDATE sync_outbox
+            SET payload = $1,
+                attempts = 0,
+                last_error = NULL,
+                next_retry_at = NULL
+          WHERE id = $2`,
+        [JSON.stringify(payload), row.id],
+      );
+    } catch {
+      // Leave malformed payloads alone; normal sync error handling will report them.
+    }
+  }
 }
 
 /**

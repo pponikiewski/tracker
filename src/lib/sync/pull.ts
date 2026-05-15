@@ -85,6 +85,8 @@ function cloudToLocalMembership(c: Record<string, unknown>): WorkspaceMembership
     user_id: c.user_id as string,
     role: c.role as WorkspaceMembership['role'],
     joined_at: toMs(c.joined_at),
+    display_role: (c.display_role as string | null) ?? null,
+    display_role_updated_at: c.display_role_updated_at ? toMs(c.display_role_updated_at) : null,
   };
 }
 
@@ -164,6 +166,46 @@ async function resourceExists(resourceId: string): Promise<boolean> {
     [resourceId],
   );
   return rows.length > 0;
+}
+
+async function fetchAndWriteMissingResource(resourceId: string): Promise<boolean> {
+  if (!supabase) return false;
+  const db = await getDb();
+  const { data, error } = await supabase
+    .from('resources')
+    .select('*')
+    .eq('id', resourceId)
+    .maybeSingle();
+
+  if (error || !data) return false;
+
+  const resource = await normalizeResourceForLocalWrite(
+    cloudToLocalResource(data as Record<string, unknown>),
+  );
+  await db.execute(
+    `INSERT INTO resources (id, workspace_id, parent_id, name, type, color, path, cached_minutes, created_at, updated_at, deleted_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     ON CONFLICT(id) DO UPDATE SET
+       workspace_id=excluded.workspace_id,
+       parent_id=excluded.parent_id, name=excluded.name, type=excluded.type,
+       color=excluded.color, path=excluded.path, cached_minutes=excluded.cached_minutes,
+       created_at=excluded.created_at, updated_at=excluded.updated_at,
+       deleted_at=excluded.deleted_at`,
+    [
+      resource.id,
+      resource.workspace_id,
+      resource.parent_id,
+      resource.name,
+      resource.type,
+      resource.color,
+      resource.path,
+      resource.cached_minutes,
+      resource.created_at,
+      resource.updated_at,
+      resource.deleted_at,
+    ],
+  );
+  return true;
 }
 
 async function normalizeResourceForLocalWrite(resource: Resource): Promise<Resource> {
@@ -279,30 +321,54 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
     cloudToLocalMembership(c as Record<string, unknown>),
   );
 
-  // WorkspaceMembership uses composite key (workspace_id, user_id) — synthesise an id for lwwMerge
-  // updated_at is required by MergeRow; we use joined_at as the conflict-resolution timestamp
+  // WorkspaceMembership uses composite key (workspace_id, user_id) — synthesise an id for lwwMerge.
+  // updated_at is required by MergeRow; role labels use display_role_updated_at, otherwise joined_at.
   type MembershipWithId = WorkspaceMembership & { id: string; updated_at: number };
+  const membershipUpdatedAt = (m: WorkspaceMembership): number =>
+    m.display_role_updated_at ?? m.joined_at;
   const localMemWithId: MembershipWithId[] = localMem.map((m) => ({
     ...m,
     id: `${m.workspace_id}:${m.user_id}`,
-    updated_at: m.joined_at,
+    updated_at: membershipUpdatedAt(m),
   }));
   const cloudMemWithId: MembershipWithId[] = cloudMemLoc.map((m) => ({
     ...m,
     id: `${m.workspace_id}:${m.user_id}`,
-    updated_at: m.joined_at,
+    updated_at: membershipUpdatedAt(m),
   }));
 
   const memMerge = lwwMerge<MembershipWithId>(localMemWithId, cloudMemWithId);
 
   try {
     for (const m of memMerge.writeSqlite) {
+      const local = localMem.find(
+        (candidate) =>
+          candidate.workspace_id === m.workspace_id && candidate.user_id === m.user_id,
+      );
+      const localDisplayRoleTs = local?.display_role_updated_at ?? 0;
+      const cloudDisplayRoleTs = m.display_role_updated_at ?? 0;
+      const displayRole =
+        local && localDisplayRoleTs > cloudDisplayRoleTs ? local.display_role : m.display_role;
+      const displayRoleUpdatedAt =
+        local && localDisplayRoleTs > cloudDisplayRoleTs
+          ? local.display_role_updated_at
+          : m.display_role_updated_at;
+
       await db.execute(
-        `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
-         VALUES ($1,$2,$3,$4)
+        `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT(workspace_id, user_id) DO UPDATE SET
-           role=excluded.role, joined_at=excluded.joined_at`,
-        [m.workspace_id, m.user_id, m.role, m.joined_at],
+           role=excluded.role, joined_at=excluded.joined_at,
+           display_role=excluded.display_role,
+           display_role_updated_at=excluded.display_role_updated_at`,
+        [
+          m.workspace_id,
+          m.user_id,
+          m.role,
+          m.joined_at,
+          displayRole ?? null,
+          displayRoleUpdatedAt ?? null,
+        ],
       );
     }
     for (const m of memMerge.pushOutbox) {
@@ -319,6 +385,8 @@ async function runPull(userId: string, isInitial: boolean): Promise<void> {
         user_id: m.user_id,
         role: m.role,
         joined_at: m.joined_at,
+        display_role: m.display_role ?? null,
+        display_role_updated_at: m.display_role_updated_at ?? null,
       };
       await enqueue(
         db,
@@ -447,10 +515,13 @@ function isMissingTable(err: SbError): boolean {
     }
     for (const e of eMerge.writeSqlite) {
       if (!(await resourceExists(e.resource_id))) {
-        console.warn(
-          `[sync] skipping event ${e.id}: resource ${e.resource_id} is not present locally`,
-        );
-        continue;
+        const recovered = await fetchAndWriteMissingResource(e.resource_id);
+        if (!recovered) {
+          console.warn(
+            `[sync] skipping event ${e.id}: resource ${e.resource_id} is not present locally`,
+          );
+          continue;
+        }
       }
       try {
         await db.execute(

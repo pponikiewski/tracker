@@ -102,6 +102,8 @@ export async function createWorkspace(input: {
       user_id: input.ownerId,
       role: "owner",
       joined_at: ts,
+      display_role: null,
+      display_role_updated_at: null,
     };
 
     await enqueue(db, "workspace", input.id, "upsert", workspaceRow as unknown as Record<string, unknown>);
@@ -168,9 +170,16 @@ export async function softDeleteWorkspace(id: string): Promise<void> {
 export async function insertMembership(m: WorkspaceMembership): Promise<void> {
   await withTx(async (db) => {
     await db.execute(
-      `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
-       VALUES ($1, $2, $3, $4)`,
-      [m.workspace_id, m.user_id, m.role, m.joined_at],
+      `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        m.workspace_id,
+        m.user_id,
+        m.role,
+        m.joined_at,
+        m.display_role ?? null,
+        m.display_role_updated_at ?? null,
+      ],
     );
 
     await enqueue(
@@ -186,13 +195,56 @@ export async function insertMembership(m: WorkspaceMembership): Promise<void> {
 export async function upsertMembershipLocal(m: WorkspaceMembership): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO workspace_memberships (workspace_id, user_id, role, joined_at, display_role, display_role_updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT(workspace_id, user_id) DO UPDATE SET
        role=excluded.role,
-       joined_at=excluded.joined_at`,
-    [m.workspace_id, m.user_id, m.role, m.joined_at],
+       joined_at=excluded.joined_at,
+       display_role=excluded.display_role,
+       display_role_updated_at=excluded.display_role_updated_at`,
+    [
+      m.workspace_id,
+      m.user_id,
+      m.role,
+      m.joined_at,
+      m.display_role ?? null,
+      m.display_role_updated_at ?? null,
+    ],
   );
+}
+
+/**
+ * Updates a descriptive team role shown in the UI and enqueues the membership for sync.
+ */
+export async function updateMembershipDisplayRole(
+  workspaceId: string,
+  userId: string,
+  displayRole: string | null,
+  updatedAt = now(),
+): Promise<void> {
+  await withTx(async (db) => {
+    await db.execute(
+      `UPDATE workspace_memberships
+         SET display_role = $1, display_role_updated_at = $2
+       WHERE workspace_id = $3 AND user_id = $4`,
+      [displayRole, updatedAt, workspaceId, userId],
+    );
+
+    const rows = await db.select<WorkspaceMembership[]>(
+      "SELECT * FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 LIMIT 1",
+      [workspaceId, userId],
+    );
+
+    if (rows[0]) {
+      await enqueue(
+        db,
+        "workspace_membership",
+        `${workspaceId}:${userId}`,
+        "upsert",
+        rows[0] as unknown as Record<string, unknown>,
+      );
+    }
+  });
 }
 
 /**
@@ -321,6 +373,8 @@ export async function claimLocalWorkspace(
       user_id: userId,
       role: "owner",
       joined_at: ts,
+      display_role: null,
+      display_role_updated_at: null,
     };
     await enqueue(
       db,

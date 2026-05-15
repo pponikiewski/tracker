@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS workspace_memberships (
   user_id       TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('owner', 'member')),
   joined_at     INTEGER NOT NULL,
+  display_role  TEXT,
+  display_role_updated_at INTEGER,
   PRIMARY KEY (workspace_id, user_id)
 );
 

@@ -39,6 +39,13 @@ export function HistoryView() {
     () => memberships.filter((member) => member.workspace_id === activeWorkspaceId),
     [activeWorkspaceId, memberships],
   );
+  const displayRoleByUserId = useMemo(
+    () =>
+      new Map(
+        workspaceMembers.map((member) => [member.user_id, member.display_role ?? null]),
+      ),
+    [workspaceMembers],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- person filter belongs to the active workspace
@@ -196,6 +203,9 @@ export function HistoryView() {
                 <div className="space-y-2">
                   {group.events.map((event) => {
                     const profile = event.user_id ? getProfile(event.user_id) : null;
+                    const displayRole = event.user_id
+                      ? displayRoleByUserId.get(event.user_id)
+                      : null;
                     const edited = event.updated_at > event.created_at;
 
                     return (
@@ -215,8 +225,15 @@ export function HistoryView() {
                             ) : (
                               <span className="h-5 w-5 shrink-0 rounded-full bg-neutral-800" />
                             )}
-                            <span className="truncate text-sm font-medium text-neutral-100">
-                              {profile?.display_name ?? "Nieznany"}
+                            <span className="flex min-w-0 items-baseline gap-1.5">
+                              <span className="truncate text-sm font-medium text-neutral-100">
+                                {profile?.display_name ?? "Nieznany"}
+                              </span>
+                              {displayRole && (
+                                <span className="shrink min-w-0 truncate text-xs text-blue-300">
+                                  {displayRole}
+                                </span>
+                              )}
                             </span>
                             <span className="truncate text-xs text-neutral-500">
                               → {event.resource_name}
