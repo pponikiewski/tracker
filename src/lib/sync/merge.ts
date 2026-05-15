@@ -11,8 +11,13 @@ export interface MergeResult<T> {
   pushOutbox: T[];    // Local wins — enqueue for push
 }
 
-const toMs = (v: number | string): number =>
-  typeof v === 'number' ? v : Date.parse(v);
+const toMs = (v: number | string): number => {
+  const n = typeof v === 'number' ? v : Date.parse(v);
+  if (!Number.isFinite(n)) {
+    throw new Error(`invalid LWW timestamp: ${JSON.stringify(v)}`);
+  }
+  return n;
+};
 
 /**
  * Last-Write-Wins merge.

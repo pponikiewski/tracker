@@ -19,6 +19,15 @@ import { useAuthStore } from "@/store/auth";
 
 let channel: RealtimeChannel | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let firstScheduledAt = 0;
+let onDisconnected: (() => void) | null = null;
+
+const DEBOUNCE_MS = 400;
+const MAX_WAIT_MS = 2000;
+
+export function setDisconnectHandler(fn: () => void): void {
+  onDisconnected = fn;
+}
 
 const SYNCED_TABLES = [
   "resources",
@@ -30,17 +39,23 @@ const SYNCED_TABLES = [
   "activity_log",
 ] as const;
 
-// Coalesce bursts of changes (e.g. a batch upsert) into one pull.
+// Coalesce bursts of changes into one pull, with maxWait so a continuous
+// change stream doesn't starve the debounce indefinitely.
 function schedulePull(): void {
+  const now = Date.now();
+  if (!firstScheduledAt) firstScheduledAt = now;
   if (debounceTimer) clearTimeout(debounceTimer);
+  const elapsed = now - firstScheduledAt;
+  const wait = Math.max(0, Math.min(DEBOUNCE_MS, MAX_WAIT_MS - elapsed));
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
+    firstScheduledAt = 0;
     void (async () => {
       // Lazy import avoids the worker <-> realtime import cycle.
       const { pullNow } = await import("./worker");
       await pullNow();
     })();
-  }, 400);
+  }, wait);
 }
 
 /**
@@ -57,8 +72,11 @@ export function startRealtime(): void {
     ch = ch.on("postgres_changes", { event: "*", schema: "public", table }, schedulePull);
   }
   channel = ch.subscribe((status) => {
-    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-      console.warn(`[realtime] channel status: ${status} — falling back to poll`);
+    if (status === "SUBSCRIBED") {
+      void import("./worker").then(({ onRealtimeReconnected }) => onRealtimeReconnected());
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      console.warn(`[realtime] ${status} — switching to fast-poll`);
+      onDisconnected?.();
     }
   });
 }

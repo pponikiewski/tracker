@@ -19,9 +19,25 @@ interface CollapseResult {
   supersededIds: Record<Entity, number[]>;
 }
 
+const PULL_INTERVAL_NORMAL = 120_000;
+const PULL_INTERVAL_DEGRADED = 15_000;
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let pullTimer: ReturnType<typeof setInterval> | null = null;
+let pullInterval = PULL_INTERVAL_NORMAL;
 let visibilityHandler: (() => void) | null = null;
+
+function restartPullTimer(intervalMs: number): void {
+  if (pullTimer) clearInterval(pullTimer);
+  pullInterval = intervalMs;
+  pullTimer = setInterval(() => void pullNow(), intervalMs);
+}
+
+export function onRealtimeReconnected(): void {
+  if (pullInterval !== PULL_INTERVAL_NORMAL) {
+    restartPullTimer(PULL_INTERVAL_NORMAL);
+  }
+}
 // Mutex so concurrent tick() invocations don't race each other against the
 // single SQLite connection (which would yield "database is locked").
 let tickInFlight: Promise<void> | null = null;
@@ -475,11 +491,24 @@ export function startWorker(): void {
   }, 10_000);
   // Faza 7: Supabase Realtime delivers cloud changes near-instantly. This poll
   // stays only as a fallback for dropped websockets, hence the slow interval.
-  pullTimer = setInterval(() => {
-    void pullNow();
-  }, 120_000);
+  restartPullTimer(PULL_INTERVAL_NORMAL);
   // Lazy import avoids the worker <-> realtime import cycle.
-  void import("./realtime").then(({ startRealtime }) => startRealtime());
+  void import("./realtime").then(({ startRealtime, setDisconnectHandler }) => {
+    setDisconnectHandler(() => {
+      if (pullInterval !== PULL_INTERVAL_DEGRADED) {
+        restartPullTimer(PULL_INTERVAL_DEGRADED);
+        void pullNow();
+        // Attempt reconnect after 60s
+        setTimeout(() => {
+          void import("./realtime").then(({ stopRealtime, startRealtime: reconnect }) => {
+            stopRealtime();
+            reconnect();
+          });
+        }, 60_000);
+      }
+    });
+    startRealtime();
+  });
   if (typeof document !== "undefined") {
     visibilityHandler = () => {
       if (document.visibilityState === "visible") {
