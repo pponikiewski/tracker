@@ -1,22 +1,22 @@
 import { getDb } from "./connection";
 import { type Resource, type ResourceType, type TimeEvent } from "./types";
-import { buildPath, parentPath } from "../utils/tree";
+import { parentPath } from "../utils/tree";
 import { newId } from "../utils/uuid";
-import { enqueue } from "@/lib/sync/outbox";
-import { withTx } from "./tx";
-import { recordActivity } from "@/lib/activity/activityLog";
 import { useAuthStore } from "@/store/auth";
-import { createEventTx, moveResourceTx } from "@/lib/tauri/domainCommands";
-import { softDeleteAssignmentsForResource } from "@/lib/assignments/assignmentService";
+import {
+  createEventTx,
+  createResourceTx,
+  deleteEventTx,
+  detachChildrenAsProjectsTx,
+  liftChildrenAndDeleteTx,
+  moveResourceTx,
+  renameResourceTx,
+  setResourceColorTx,
+  softDeleteSubtreeTx,
+  updateEventTx,
+} from "@/lib/tauri/domainCommands";
 
 const now = () => Date.now();
-
-const RESOURCE_LABEL: Record<ResourceType, string> = {
-  project: "projekt",
-  stage: "etap",
-  substage: "podetap",
-  task: "zadanie",
-};
 
 export async function listActiveResources(workspaceId: string): Promise<Resource[]> {
   const db = await getDb();
@@ -58,103 +58,44 @@ export interface CreateResourceInput {
 }
 
 export async function createResource(input: CreateResourceInput): Promise<string> {
-  return withTx(async (db) => {
-    const id = input.id ?? newId();
-    const ts = input.timestamp ?? now();
-
-    let path: string;
-    if (input.parentId === null) {
-      path = id;
-    } else {
-      const parent = await getResource(input.parentId);
-      if (!parent) throw new Error(`Parent ${input.parentId} not found`);
-      path = buildPath(parent.path.split("/"), id);
-    }
-
-    await db.execute(
-      `INSERT INTO resources
-         (id, parent_id, name, type, color, path, cached_minutes, workspace_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $8)`,
-      [
-        id,
-        input.parentId,
-        input.name,
-        input.type,
-        input.color ?? null,
-        path,
-        input.workspaceId,
-        ts,
-      ],
-    );
-
-    const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
-    if (rows[0])
-      await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
-
-    await recordActivity(db, {
-      workspaceId: input.workspaceId,
-      action: "resource.create",
-      entityType: "resource",
-      entityId: id,
-      entityName: input.name,
-      summary: `Dodano ${RESOURCE_LABEL[input.type]} "${input.name}"`,
-      metadata: { type: input.type, parent_id: input.parentId },
-      timestamp: ts,
-    });
-
-    return id;
+  const id = input.id ?? newId();
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await createResourceTx({
+    id,
+    parentId: input.parentId,
+    name: input.name,
+    type: input.type,
+    color: input.color ?? null,
+    workspaceId: input.workspaceId,
+    timestamp: input.timestamp ?? now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
+  return id;
 }
 
 export async function renameResource(id: string, name: string): Promise<void> {
-  await withTx(async (db) => {
-    const previous = await getResource(id);
-    await db.execute("UPDATE resources SET name = $1, updated_at = $2 WHERE id = $3", [
-      name,
-      now(),
-      id,
-    ]);
-    const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
-    if (rows[0])
-      await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
-    if (rows[0]) {
-      await recordActivity(db, {
-        workspaceId: rows[0].workspace_id,
-        action: "resource.rename",
-        entityType: "resource",
-        entityId: id,
-        entityName: name,
-        summary: `Zmieniono nazwę "${previous?.name ?? id}" na "${name}"`,
-        metadata: { from: previous?.name ?? null, to: name },
-      });
-    }
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await renameResourceTx({
+    id,
+    name,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
 }
 
 export async function setResourceColor(id: string, color: string | null): Promise<void> {
-  await withTx(async (db) => {
-    const previous = await getResource(id);
-    await db.execute("UPDATE resources SET color = $1, updated_at = $2 WHERE id = $3", [
-      color,
-      now(),
-      id,
-    ]);
-    const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [id]);
-    if (rows[0])
-      await enqueue(db, "resource", id, "upsert", rows[0] as unknown as Record<string, unknown>);
-    if (rows[0]) {
-      await recordActivity(db, {
-        workspaceId: rows[0].workspace_id,
-        action: "resource.color",
-        entityType: "resource",
-        entityId: id,
-        entityName: rows[0].name,
-        summary: color
-          ? `Zmieniono kolor "${rows[0].name}"`
-          : `Wyczyszczono kolor "${rows[0].name}"`,
-        metadata: { from: previous?.color ?? null, to: color },
-      });
-    }
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await setResourceColorTx({
+    id,
+    color,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
 }
 
@@ -178,62 +119,13 @@ export async function moveResource(id: string, newParentId: string | null): Prom
 
 /** Soft-delete the resource and all descendants by path prefix. */
 export async function softDeleteSubtree(id: string): Promise<void> {
-  await withTx(async (db) => {
-    const r = await getResource(id);
-    if (!r) return;
-    const ts = now();
-
-    // Collect affected resource ids and event ids BEFORE the UPDATE (Req 5.5)
-    const resourceIds = await db.select<{ id: string }[]>(
-      "SELECT id FROM resources WHERE path = $1 OR path LIKE $2",
-      [r.path, `${r.path}/%`],
-    );
-    const eventIds = await db.select<{ id: string }[]>(
-      `SELECT e.id FROM events e
-       JOIN resources res ON res.id = e.resource_id
-       WHERE res.path = $1 OR res.path LIKE $2`,
-      [r.path, `${r.path}/%`],
-    );
-
-    await db.execute(
-      "UPDATE resources SET deleted_at = $1, updated_at = $1 WHERE path = $2 OR path LIKE $3",
-      [ts, r.path, `${r.path}/%`],
-    );
-    // Also soft-delete the events under the subtree.
-    await db.execute(
-      `UPDATE events SET deleted_at = $1, updated_at = $1
-       WHERE resource_id IN (
-         SELECT id FROM resources WHERE path = $2 OR path LIKE $3
-       )`,
-      [ts, r.path, `${r.path}/%`],
-    );
-    for (const { id: rid } of resourceIds) {
-      await softDeleteAssignmentsForResource(db, rid, ts);
-    }
-
-    // Enqueue each affected resource (op='upsert' per Req 5.4)
-    for (const { id: rid } of resourceIds) {
-      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
-      if (rows[0])
-        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
-    }
-    // Enqueue each affected event (Req 5.5)
-    for (const { id: eid } of eventIds) {
-      const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [eid]);
-      if (rows[0])
-        await enqueue(db, "event", eid, "upsert", rows[0] as unknown as Record<string, unknown>);
-    }
-
-    await recordActivity(db, {
-      workspaceId: r.workspace_id,
-      action: "resource.delete_subtree",
-      entityType: "resource",
-      entityId: id,
-      entityName: r.name,
-      summary: `Usunięto "${r.name}" i jego zawartość`,
-      metadata: { resource_count: resourceIds.length, event_count: eventIds.length },
-      timestamp: ts,
-    });
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await softDeleteSubtreeTx({
+    id,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
 }
 
@@ -243,78 +135,14 @@ export async function softDeleteSubtree(id: string): Promise<void> {
  * Validates new parent/child type compatibility — throws if not allowed.
  */
 export async function liftChildrenAndDelete(id: string): Promise<void> {
-  await withTx(async (db) => {
-    const node = await getResource(id);
-    if (!node) return;
-    const newParentId = node.parent_id;
-    const children = await db.select<Resource[]>(
-      "SELECT * FROM resources WHERE parent_id = $1 AND deleted_at IS NULL",
-      [id],
-    );
-    const ts = now();
-    const newParentPathPrefix =
-      newParentId === null ? "" : `${(await getResource(newParentId))!.path}/`;
-
-    // Collect all descendant ids that will have their paths rewritten
-    const allAffectedIds: string[] = [];
-    for (const c of children) {
-      const newPath = `${newParentPathPrefix}${c.id}`;
-      await db.execute(
-        "UPDATE resources SET parent_id = $1, path = $2, updated_at = $3 WHERE id = $4",
-        [newParentId, newPath, ts, c.id],
-      );
-      // Update all descendants of c (replace c.path prefix → newPath).
-      const descendants = await db.select<{ id: string }[]>(
-        "SELECT id FROM resources WHERE path LIKE $1",
-        [`${c.path}/%`],
-      );
-      await rewriteDescendantPaths(c.path, newPath);
-      allAffectedIds.push(c.id, ...descendants.map((d) => d.id));
-    }
-
-    await db.execute("UPDATE resources SET deleted_at = $1, updated_at = $1 WHERE id = $2", [
-      ts,
-      id,
-    ]);
-    allAffectedIds.push(id);
-
-    // Enqueue all modified resources
-    for (const rid of allAffectedIds) {
-      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
-      if (rows[0])
-        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
-    }
-
-    await recordActivity(db, {
-      workspaceId: node.workspace_id,
-      action: "resource.lift_delete",
-      entityType: "resource",
-      entityId: id,
-      entityName: node.name,
-      summary: `Usunięto "${node.name}" i podniesiono jego dzieci`,
-      metadata: { children_count: children.length },
-      timestamp: ts,
-    });
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await liftChildrenAndDeleteTx({
+    id,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
-}
-
-/**
- * Replace path prefix `oldPrefix` with `newPrefix` for all descendant rows.
- */
-async function rewriteDescendantPaths(oldPrefix: string, newPrefix: string): Promise<void> {
-  const db = await getDb();
-  const descendants = await db.select<{ id: string; path: string }[]>(
-    "SELECT id, path FROM resources WHERE path LIKE $1",
-    [`${oldPrefix}/%`],
-  );
-  for (const d of descendants) {
-    const updated = `${newPrefix}${d.path.slice(oldPrefix.length)}`;
-    await db.execute("UPDATE resources SET path = $1, updated_at = $2 WHERE id = $3", [
-      updated,
-      now(),
-      d.id,
-    ]);
-  }
 }
 
 /**
@@ -322,55 +150,15 @@ async function rewriteDescendantPaths(oldPrefix: string, newPrefix: string): Pro
  * Then soft-delete the original.
  */
 export async function detachChildrenAsProjects(id: string): Promise<void> {
-  await withTx(async (db) => {
-    const node = await getResource(id);
-    if (!node) return;
-    const children = await db.select<Resource[]>(
-      "SELECT * FROM resources WHERE parent_id = $1 AND deleted_at IS NULL",
-      [id],
-    );
-    const ts = now();
-    const allAffectedIds: string[] = [];
-
-    for (const c of children) {
-      await db.execute(
-        "UPDATE resources SET parent_id = NULL, type = 'project', path = $1, updated_at = $2 WHERE id = $3",
-        [c.id, ts, c.id],
-      );
-      const descendants = await db.select<{ id: string }[]>(
-        "SELECT id FROM resources WHERE path LIKE $1",
-        [`${c.path}/%`],
-      );
-      await rewriteDescendantPaths(c.path, c.id);
-      allAffectedIds.push(c.id, ...descendants.map((d) => d.id));
-    }
-
-    await db.execute("UPDATE resources SET deleted_at = $1, updated_at = $1 WHERE id = $2", [
-      ts,
-      id,
-    ]);
-    allAffectedIds.push(id);
-
-    // Enqueue all modified resources
-    for (const rid of allAffectedIds) {
-      const rows = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [rid]);
-      if (rows[0])
-        await enqueue(db, "resource", rid, "upsert", rows[0] as unknown as Record<string, unknown>);
-    }
-
-    await recordActivity(db, {
-      workspaceId: node.workspace_id,
-      action: "resource.detach_delete",
-      entityType: "resource",
-      entityId: id,
-      entityName: node.name,
-      summary: `Usunięto "${node.name}" i zamieniono dzieci na projekty`,
-      metadata: { children_count: children.length },
-      timestamp: ts,
-    });
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await detachChildrenAsProjectsTx({
+    id,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
 }
-
 // ---- Events ----
 
 export interface CreateEventInput {
@@ -485,86 +273,30 @@ export interface UpdateEventInput {
 }
 
 export async function updateEvent(input: UpdateEventInput): Promise<void> {
-  return withTx(async (db) => {
-    const ts = now();
-    const existing = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [input.id]);
-    const prev = existing[0];
-    if (!prev) return;
-
-    await db.execute(
-      `UPDATE events
-         SET date = $1, minutes = $2, goal = $3, topics = $4,
-             notes = $5, report = $6, updated_at = $7
-       WHERE id = $8`,
-      [
-        input.date,
-        input.minutes,
-        input.goal ?? null,
-        input.topics ?? null,
-        input.notes ?? null,
-        input.report ?? null,
-        ts,
-        input.id,
-      ],
-    );
-
-    if (prev.minutes !== input.minutes || prev.date !== input.date) {
-      await recalcCachedMinutesForResource(prev.resource_id);
-    }
-
-    const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [input.id]);
-    if (rows[0]) {
-      await enqueue(db, "event", input.id, "upsert", rows[0] as unknown as Record<string, unknown>);
-      const resources = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [
-        rows[0].resource_id,
-      ]);
-      const resourceName = resources[0]?.name ?? rows[0].resource_id;
-      await recordActivity(db, {
-        workspaceId: rows[0].workspace_id,
-        action: "event.update",
-        entityType: "event",
-        entityId: input.id,
-        entityName: resourceName,
-        summary: `Edytowano wpis czasu w "${resourceName}"`,
-        metadata: {
-          resource_id: rows[0].resource_id,
-          before: { date: prev.date, minutes: prev.minutes },
-          after: { date: rows[0].date, minutes: rows[0].minutes },
-        },
-        timestamp: ts,
-      });
-    }
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await updateEventTx({
+    id: input.id,
+    date: input.date,
+    minutes: input.minutes,
+    goal: input.goal ?? null,
+    topics: input.topics ?? null,
+    notes: input.notes ?? null,
+    report: input.report ?? null,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
 }
 
 export async function deleteEvent(id: string): Promise<void> {
-  return withTx(async (db) => {
-    const ts = now();
-    const existing = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
-    const prev = existing[0];
-    if (!prev) return;
-
-    await db.execute("UPDATE events SET deleted_at = $1, updated_at = $1 WHERE id = $2", [ts, id]);
-    await recalcCachedMinutesForResource(prev.resource_id);
-
-    const rows = await db.select<TimeEvent[]>("SELECT * FROM events WHERE id = $1", [id]);
-    if (rows[0]) {
-      await enqueue(db, "event", id, "upsert", rows[0] as unknown as Record<string, unknown>);
-      const resources = await db.select<Resource[]>("SELECT * FROM resources WHERE id = $1", [
-        prev.resource_id,
-      ]);
-      const resourceName = resources[0]?.name ?? prev.resource_id;
-      await recordActivity(db, {
-        workspaceId: prev.workspace_id,
-        action: "event.delete",
-        entityType: "event",
-        entityId: id,
-        entityName: resourceName,
-        summary: `Usunięto wpis ${prev.minutes} min z "${resourceName}"`,
-        metadata: { resource_id: prev.resource_id, date: prev.date, minutes: prev.minutes },
-        timestamp: ts,
-      });
-    }
+  const authState = useAuthStore.getState().state;
+  const actorUserId = authState.kind === "authed" ? authState.user.id : null;
+  await deleteEventTx({
+    id,
+    timestamp: now(),
+    activityId: crypto.randomUUID(),
+    actorUserId,
   });
 }
 
