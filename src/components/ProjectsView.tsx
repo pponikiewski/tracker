@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/store/projects";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useAssignmentStore } from "@/store/assignments";
 import { useProfileStore } from "@/store/profile";
 import { useAuthStore } from "@/store/auth";
 import { usePresenceStore } from "@/store/presence";
+import { useTreeUiStore } from "@/store/treeUi";
 import { TreeView } from "./Tree/TreeView";
 import { ContextMenu, type MenuEntry, type AssignMenuItem } from "./ContextMenu";
 import { ColorPickerModal } from "./ColorPickerModal";
@@ -132,7 +133,6 @@ export function ProjectsView() {
   const {
     resources,
     tree,
-    expandedIds,
     error,
     refresh,
     toggleExpanded,
@@ -155,11 +155,15 @@ export function ProjectsView() {
   const getProfile = useProfileStore((s) => s.getProfile);
   const authState = useAuthStore((s) => s.state);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const selectedId = useTreeUiStore((s) => s.selectedId);
+  const renamingId = useTreeUiStore((s) => s.renamingId);
+  const setSelectedId = useTreeUiStore((s) => s.setSelected);
+  const setRenamingId = useTreeUiStore((s) => s.setRenaming);
+  const setDraggingIdStore = useTreeUiStore((s) => s.setDragging);
+  const setDropTargetIdStore = useTreeUiStore((s) => s.setDropTarget);
+  const setDimmedIdsStore = useTreeUiStore((s) => s.setDimmedIds);
+  const resetDrag = useTreeUiStore((s) => s.resetDrag);
   const draggingIdRef = useRef<string | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [createModal, setCreateModal] = useState<CreateModalState | null>(null);
   const [colorTargetId, setColorTargetId] = useState<string | null>(null);
@@ -187,6 +191,7 @@ export function ProjectsView() {
 
   // Compute filtered tree and dimmed IDs
   const { filteredTree, dimmedIds, hasMatches } = useMemo(() => {
+
     if (effectiveFilterUserId === null) {
       return { filteredTree: tree, dimmedIds: new Set<string>(), hasMatches: true };
     }
@@ -226,6 +231,12 @@ export function ProjectsView() {
     void refresh();
   }, [refresh, activeWorkspaceId]);
 
+  // Mirror dimmedIds into the tree-ui store so per-node TreeNode subscribers
+  // can read their own dimmed boolean without re-rendering the whole tree.
+  useEffect(() => {
+    setDimmedIdsStore(dimmedIds);
+  }, [dimmedIds, setDimmedIdsStore]);
+
   // Faza 7 presence: broadcast which resource the user is editing (log modal
   // or inline rename) so teammates see an "is editing" badge on the node.
   const setPresenceEditing = usePresenceStore((s) => s.setEditing);
@@ -259,12 +270,48 @@ export function ProjectsView() {
     setMenu({ x: e.clientX, y: e.clientY, targetId: null });
   };
 
-  const handleContextNode = (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setSelectedId(id);
-    setMenu({ x: e.clientX, y: e.clientY, targetId: id });
-  };
+  const handleContextNode = useCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectedId(id);
+      setMenu({ x: e.clientX, y: e.clientY, targetId: id });
+    },
+    [setSelectedId],
+  );
+
+  const handleLogWork = useCallback(
+    (id: string) => {
+      const r = useProjects.getState().resources.find((res) => res.id === id);
+      if (r) setLogWorkResource(r);
+    },
+    [],
+  );
+
+  const handleCommitRename = useCallback(
+    async (id: string, name: string) => {
+      await rename(id, name);
+      setRenamingId(null);
+    },
+    [rename, setRenamingId],
+  );
+
+  const handleCancelRename = useCallback(() => {
+    setRenamingId(null);
+  }, [setRenamingId]);
+
+  const handleDragStart = useCallback(
+    (id: string) => {
+      draggingIdRef.current = id;
+      setDraggingIdStore(id);
+    },
+    [setDraggingIdStore],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    draggingIdRef.current = null;
+    resetDrag();
+  }, [resetDrag]);
 
   const openNewProjectPrompt = () => {
     setCreateModal({
@@ -311,49 +358,58 @@ export function ProjectsView() {
     return canParent(target.type, source.type);
   };
 
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    const activeDraggingId = draggingIdRef.current ?? draggingId;
-    if (!activeDraggingId) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-    const validDropTarget = canDropOn(activeDraggingId, id);
-    const nextDropTargetId = validDropTarget ? id : null;
-    if (dropTargetId !== nextDropTargetId) setDropTargetId(nextDropTargetId);
-  };
+  const handleDragOver = useCallback(
+    (e: React.DragEvent, id: string) => {
+      const activeDraggingId = draggingIdRef.current ?? useTreeUiStore.getState().draggingId;
+      if (!activeDraggingId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      const validDropTarget = canDropOn(activeDraggingId, id);
+      const nextDropTargetId = validDropTarget ? id : null;
+      setDropTargetIdStore(nextDropTargetId);
+    },
+    // canDropOn closes over `resources` (via findResource) which is fine; the
+    // closure is recreated when resources change, but TreeNode is memoized so
+    // children only see the new ref if their own subscribed slice changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resources, setDropTargetIdStore],
+  );
 
-  const handleDrop = async (e: React.DragEvent, id: string) => {
-    const activeDraggingId = draggingIdRef.current ?? draggingId;
-    if (!activeDraggingId) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const src = activeDraggingId;
-    draggingIdRef.current = null;
-    setDraggingId(null);
-    setDropTargetId(null);
-    if (!canDropOn(src, id)) return;
-    try {
-      await move(src, id);
-    } catch {
-      /* validation error — silently ignore for MVP */
-    }
-  };
+  const handleDrop = useCallback(
+    async (e: React.DragEvent, id: string) => {
+      const activeDraggingId = draggingIdRef.current ?? useTreeUiStore.getState().draggingId;
+      if (!activeDraggingId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const src = activeDraggingId;
+      draggingIdRef.current = null;
+      resetDrag();
+      if (!canDropOn(src, id)) return;
+      try {
+        await move(src, id);
+      } catch {
+        /* validation error — silently ignore for MVP */
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resources, resetDrag, move],
+  );
 
   const handleDragOverEmpty = (e: React.DragEvent) => {
-    const activeDraggingId = draggingIdRef.current ?? draggingId;
+    const activeDraggingId = draggingIdRef.current ?? useTreeUiStore.getState().draggingId;
     if (!activeDraggingId) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
 
   const handleDropEmpty = async (e: React.DragEvent) => {
-    const activeDraggingId = draggingIdRef.current ?? draggingId;
+    const activeDraggingId = draggingIdRef.current ?? useTreeUiStore.getState().draggingId;
     if (!activeDraggingId) return;
     e.preventDefault();
     const src = activeDraggingId;
     draggingIdRef.current = null;
-    setDraggingId(null);
-    setDropTargetId(null);
+    resetDrag();
     if (!canDropOn(src, null)) return;
     try {
       await move(src, null);
@@ -541,39 +597,20 @@ export function ProjectsView() {
         ) : (
           <TreeView
             tree={filteredTree}
-            expandedIds={expandedIds}
-            selectedId={selectedId}
-            renamingId={renamingId}
-            draggingId={draggingId}
-            dropTargetId={dropTargetId}
-            dimmedIds={dimmedIds}
             onToggle={toggleExpanded}
             onSelect={setSelectedId}
             onContextMenu={handleContextNode}
             onContextMenuEmpty={handleContextEmpty}
             onDragOverEmpty={handleDragOverEmpty}
             onDropEmpty={handleDropEmpty}
-            onLogWork={(id) => {
-              const r = findResource(id);
-              if (r) setLogWorkResource(r);
-            }}
+            onLogWork={handleLogWork}
             onStartRename={setRenamingId}
-            onCommitRename={async (id, name) => {
-              await rename(id, name);
-              setRenamingId(null);
-            }}
-            onCancelRename={() => setRenamingId(null)}
-            onDragStart={(id) => {
-              draggingIdRef.current = id;
-              setDraggingId(id);
-            }}
+            onCommitRename={handleCommitRename}
+            onCancelRename={handleCancelRename}
+            onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            onDragEnd={() => {
-              draggingIdRef.current = null;
-              setDraggingId(null);
-              setDropTargetId(null);
-            }}
+            onDragEnd={handleDragEnd}
           />
         )}
       </main>

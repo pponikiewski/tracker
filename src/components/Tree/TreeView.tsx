@@ -1,7 +1,7 @@
 import type { ResourceNode } from "@/lib/db/types";
-import { TreeNode, type TreeContext } from "./TreeNode";
+import { TreeNode, type TreeCallbacks } from "./TreeNode";
 
-interface Props extends TreeContext {
+interface Props extends TreeCallbacks {
   tree: ResourceNode[];
   onContextMenuEmpty: (e: React.MouseEvent) => void;
   onDropEmpty: (e: React.DragEvent) => void;
@@ -9,7 +9,7 @@ interface Props extends TreeContext {
 }
 
 export function TreeView(props: Props) {
-  const { tree, onContextMenuEmpty, onDropEmpty, onDragOverEmpty, ...ctx } = props;
+  const { tree, onContextMenuEmpty, onDropEmpty, onDragOverEmpty, ...callbacks } = props;
   return (
     <div
       onContextMenu={(e) => {
@@ -26,7 +26,7 @@ export function TreeView(props: Props) {
         </div>
       )}
       {tree.map((node) => (
-        <TreeNode key={node.id} {...ctx} node={node} depth={0} />
+        <TreeNode key={node.id} {...callbacks} node={node} depth={0} />
       ))}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import type { ResourceNode } from "@/lib/db/types";
 import { formatMinutes } from "@/lib/utils/time";
@@ -7,8 +7,10 @@ import { useAssignmentStore } from "@/store/assignments";
 import { useAuthStore } from "@/store/auth";
 import { usePresenceStore } from "@/store/presence";
 import { useProfileStore } from "@/store/profile";
+import { useProjects } from "@/store/projects";
+import { useTreeUiStore } from "@/store/treeUi";
 
-interface TreeCallbacks {
+export interface TreeCallbacks {
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
@@ -22,17 +24,7 @@ interface TreeCallbacks {
   onDragEnd: () => void;
 }
 
-export interface TreeContext extends TreeCallbacks {
-  expandedIds: Set<string>;
-  selectedId: string | null;
-  renamingId: string | null;
-  draggingId: string | null;
-  dropTargetId: string | null;
-  /** IDs of ancestor nodes that should be shown at reduced opacity (0.5) when a filter is active */
-  dimmedIds?: Set<string>;
-}
-
-interface Props extends TreeContext {
+interface Props extends TreeCallbacks {
   node: ResourceNode;
   depth: number;
 }
@@ -63,14 +55,16 @@ function shapeStyle(color: string): React.CSSProperties {
   return { backgroundColor: color };
 }
 
-export function TreeNode(props: Props) {
-  const { node, depth, expandedIds, selectedId, renamingId, draggingId, dropTargetId, dimmedIds } = props;
-  const expanded = expandedIds.has(node.id);
-  const selected = selectedId === node.id;
-  const renaming = renamingId === node.id;
-  const isDropTarget = dropTargetId === node.id;
-  const isDragging = draggingId === node.id;
-  const isDimmed = dimmedIds?.has(node.id) ?? false;
+function TreeNodeImpl(props: Props) {
+  const { node, depth } = props;
+
+  const expanded = useProjects((s) => s.expandedIds.has(node.id));
+  const selected = useTreeUiStore((s) => s.selectedId === node.id);
+  const renaming = useTreeUiStore((s) => s.renamingId === node.id);
+  const isDragging = useTreeUiStore((s) => s.draggingId === node.id);
+  const isDropTarget = useTreeUiStore((s) => s.dropTargetId === node.id);
+  const isDimmed = useTreeUiStore((s) => s.dimmedIds.has(node.id));
+
   const hasChildren = node.children.length > 0;
 
   const getAssignees = useAssignmentStore((s) => s.getAssignees);
@@ -80,13 +74,23 @@ export function TreeNode(props: Props) {
   const visibleAssignees = assigneeIds.slice(0, MAX_VISIBLE_ASSIGNEES);
   const overflowCount = assigneeIds.length - visibleAssignees.length;
 
-  // Faza 7 presence: other members currently editing this node.
-  const presenceMembers = usePresenceStore((s) => s.members);
+  // Faza 7 presence: subscribe to a stable key for editors-of-this-node so
+  // unrelated presence broadcasts don't re-render every TreeNode.
   const authState = useAuthStore((s) => s.state);
   const selfId = authState.kind === "authed" ? authState.user.id : null;
-  const editors = presenceMembers.filter(
-    (m) => m.editingResourceId === node.id && m.userId !== selfId,
+  const editorsKey = usePresenceStore((s) =>
+    s.members
+      .filter((m) => m.editingResourceId === node.id && m.userId !== selfId)
+      .map((m) => m.userId)
+      .sort()
+      .join(","),
   );
+  const editors =
+    editorsKey === ""
+      ? []
+      : usePresenceStore
+          .getState()
+          .members.filter((m) => m.editingResourceId === node.id && m.userId !== selfId);
 
   return (
     <>
@@ -215,11 +219,28 @@ export function TreeNode(props: Props) {
 
       {expanded &&
         node.children.map((child) => (
-          <TreeNode key={child.id} {...props} node={child} depth={depth + 1} />
+          <TreeNode
+            key={child.id}
+            node={child}
+            depth={depth + 1}
+            onToggle={props.onToggle}
+            onSelect={props.onSelect}
+            onContextMenu={props.onContextMenu}
+            onLogWork={props.onLogWork}
+            onStartRename={props.onStartRename}
+            onCommitRename={props.onCommitRename}
+            onCancelRename={props.onCancelRename}
+            onDragStart={props.onDragStart}
+            onDragOver={props.onDragOver}
+            onDrop={props.onDrop}
+            onDragEnd={props.onDragEnd}
+          />
         ))}
     </>
   );
 }
+
+export const TreeNode = memo(TreeNodeImpl);
 
 function RenameInput({
   initial,
