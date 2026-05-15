@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/store/projects";
-import { aggregate, daysAgoIso, fillDailyGaps, type RangeStats } from "@/lib/analytics/aggregate";
+import {
+  aggregate,
+  aggregateResourceBreakdown,
+  daysAgoIso,
+  fillDailyGaps,
+  filterEventsByProjects,
+  rootIdOfPath,
+  type RangeStats,
+} from "@/lib/analytics/aggregate";
 import { todayIso } from "@/lib/utils/time";
 import { useEventsRange } from "@/lib/hooks/useEventsRange";
 import { downloadCsv, eventsToCsv } from "@/lib/utils/csv";
-import { rootIdOfPath } from "@/lib/analytics/aggregate";
 import { StatsCard } from "./StatsCard";
 import { ProjectsPieChart } from "./ProjectsPieChart";
 import { DailyBarChart } from "./DailyBarChart";
@@ -21,6 +28,7 @@ export function DashboardView() {
   const [fromIso, setFromIso] = useState(() => daysAgoIso(29));
   const [toIso, setToIso] = useState(() => todayIso());
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [drillResourceId, setDrillResourceId] = useState<string | null>(null);
   const { events, loading, error } = useEventsRange(fromIso, toIso);
 
   // Make sure resources are loaded once.
@@ -30,9 +38,29 @@ export function DashboardView() {
 
   const projects = useMemo(() => resources.filter((r) => r.type === "project"), [resources]);
 
+  const selectedEvents = useMemo(() => filterEventsByProjects(events, selected), [events, selected]);
+  const effectiveDrillResourceId = useMemo(() => {
+    if (!drillResourceId) return null;
+    const resource = resources.find((r) => r.id === drillResourceId);
+    if (!resource) return null;
+    const rootId = rootIdOfPath(resource.path);
+    if (selected.size > 0 && !selected.has(rootId)) return null;
+    return drillResourceId;
+  }, [drillResourceId, resources, selected]);
+  const focusedEvents = useMemo(() => {
+    if (!effectiveDrillResourceId) return selectedEvents;
+    const resource = resources.find((r) => r.id === effectiveDrillResourceId);
+    if (!resource) return selectedEvents;
+    return selectedEvents.filter(
+      (event) =>
+        event.resource_path === resource.path ||
+        event.resource_path.startsWith(`${resource.path}/`),
+    );
+  }, [effectiveDrillResourceId, resources, selectedEvents]);
+
   const stats: RangeStats = useMemo(
-    () => aggregate(events, resources, selected),
-    [events, resources, selected],
+    () => aggregate(focusedEvents, resources),
+    [focusedEvents, resources],
   );
 
   const filledDaily = useMemo(
@@ -40,12 +68,19 @@ export function DashboardView() {
     [stats.byDate, fromIso, toIso],
   );
 
-  // Quick stats: today / week / month from full events list (re-aggregate).
+  const resourceBreakdown = useMemo(
+    () => aggregateResourceBreakdown(selectedEvents, resources, effectiveDrillResourceId),
+    [selectedEvents, resources, effectiveDrillResourceId],
+  );
+
+  // Quick stats: today / week / month from the same project filter as the report.
   const todayStr = todayIso();
   const weekFrom = daysAgoIso(6);
   const monthFrom = daysAgoIso(29);
   const minutesIn = (from: string, to: string): number =>
-    events.filter((e) => e.date >= from && e.date <= to).reduce((sum, e) => sum + e.minutes, 0);
+    focusedEvents
+      .filter((e) => e.date >= from && e.date <= to)
+      .reduce((sum, e) => sum + e.minutes, 0);
 
   const toggleProject = (id: string) => {
     const next = new Set(selected);
@@ -56,12 +91,8 @@ export function DashboardView() {
   const clearSelection = () => setSelected(new Set());
 
   const handleExportCsv = () => {
-    const filtered =
-      selected.size === 0
-        ? events
-        : events.filter((e) => selected.has(rootIdOfPath(e.resource_path)));
-    if (filtered.length === 0) return;
-    const csv = eventsToCsv(filtered);
+    if (selectedEvents.length === 0) return;
+    const csv = eventsToCsv(selectedEvents);
     downloadCsv(`tracker-${fromIso}_to_${toIso}.csv`, csv);
   };
 
@@ -102,7 +133,7 @@ export function DashboardView() {
           <button
             type="button"
             onClick={handleExportCsv}
-            disabled={events.length === 0}
+            disabled={selectedEvents.length === 0}
             className="ml-auto rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
             title="Eksport widocznych eventów do CSV"
           >
@@ -170,7 +201,12 @@ export function DashboardView() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <ProjectsPieChart data={stats.byProject} />
+          <ProjectsPieChart
+            data={resourceBreakdown.items}
+            current={resourceBreakdown.current}
+            ancestors={resourceBreakdown.ancestors}
+            onNavigate={setDrillResourceId}
+          />
           <DailyBarChart data={filledDaily} />
         </div>
 

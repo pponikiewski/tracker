@@ -21,10 +21,34 @@ export interface RangeStats {
   byDate: DailyStat[];
 }
 
-/** Extract root project id from materialized path "id1/id2/id3" → "id1". */
+export interface ResourceTimeStat {
+  id: string;
+  resourceId: string;
+  name: string;
+  color: string;
+  minutes: number;
+  hasChildren: boolean;
+  isDirect: boolean;
+}
+
+export interface ResourceBreakdown {
+  current: Resource | null;
+  ancestors: Resource[];
+  items: ResourceTimeStat[];
+}
+
+/** Extract root project id from materialized path "id1/id2/id3" to "id1". */
 export function rootIdOfPath(path: string): string {
   const slash = path.indexOf("/");
   return slash === -1 ? path : path.slice(0, slash);
+}
+
+export function filterEventsByProjects(
+  events: EventWithResource[],
+  selectedProjectIds: Set<string>,
+): EventWithResource[] {
+  if (selectedProjectIds.size === 0) return events;
+  return events.filter((event) => selectedProjectIds.has(rootIdOfPath(event.resource_path)));
 }
 
 /**
@@ -41,11 +65,12 @@ export function aggregate(
   const byDate = new Map<string, number>();
   let total = 0;
 
-  for (const e of events) {
+  const filteredEvents = selectedProjectIds
+    ? filterEventsByProjects(events, selectedProjectIds)
+    : events;
+
+  for (const e of filteredEvents) {
     const rootId = rootIdOfPath(e.resource_path);
-    if (selectedProjectIds && selectedProjectIds.size > 0 && !selectedProjectIds.has(rootId)) {
-      continue;
-    }
     const project = projectMap.get(rootId);
     const name = project?.name ?? "(usunięty projekt)";
     const color = project?.color ?? DEFAULT_COLOR;
@@ -67,6 +92,98 @@ export function aggregate(
     byDate: [...byDate.entries()]
       .map(([date, minutes]) => ({ date, minutes }))
       .sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}
+
+function isInPath(resourcePath: string, ancestorPath: string): boolean {
+  return resourcePath === ancestorPath || resourcePath.startsWith(`${ancestorPath}/`);
+}
+
+function minutesInSubtree(events: EventWithResource[], resourcePath: string): number {
+  return events
+    .filter((event) => isInPath(event.resource_path, resourcePath))
+    .reduce((sum, event) => sum + event.minutes, 0);
+}
+
+function directLabel(resource: Resource): string {
+  switch (resource.type) {
+    case "project":
+      return "Bezpośrednio na projekcie";
+    case "stage":
+      return "Bezpośrednio na etapie";
+    case "substage":
+      return "Bezpośrednio na podetapie";
+    case "task":
+      return "Bezpośrednio na zadaniu";
+  }
+}
+
+export function aggregateResourceBreakdown(
+  events: EventWithResource[],
+  resources: Resource[],
+  currentResourceId: string | null,
+): ResourceBreakdown {
+  const resourceMap = new Map(resources.map((resource) => [resource.id, resource]));
+  const current = currentResourceId ? (resourceMap.get(currentResourceId) ?? null) : null;
+  const childCount = new Map<string, number>();
+
+  for (const resource of resources) {
+    if (!resource.parent_id) continue;
+    childCount.set(resource.parent_id, (childCount.get(resource.parent_id) ?? 0) + 1);
+  }
+
+  const ancestors = current
+    ? current.path
+        .split("/")
+        .slice(0, -1)
+        .map((id) => resourceMap.get(id))
+        .filter((resource): resource is Resource => Boolean(resource))
+    : [];
+
+  const children = resources.filter((resource) =>
+    current ? resource.parent_id === current.id : resource.parent_id === null,
+  );
+
+  const childItems = children
+    .map<ResourceTimeStat>((resource) => ({
+      id: resource.id,
+      resourceId: resource.id,
+      name: resource.name,
+      color: resource.color ?? DEFAULT_COLOR,
+      minutes: minutesInSubtree(events, resource.path),
+      hasChildren: (childCount.get(resource.id) ?? 0) > 0,
+      isDirect: false,
+    }))
+    .filter((item) => item.minutes > 0);
+
+  const directMinutes = current
+    ? events
+        .filter((event) => event.resource_id === current.id)
+        .reduce((sum, event) => sum + event.minutes, 0)
+    : 0;
+
+  const directItem: ResourceTimeStat[] =
+    current && directMinutes > 0
+      ? [
+          {
+            id: `${current.id}:direct`,
+            resourceId: current.id,
+            name: directLabel(current),
+            color: current.color ?? DEFAULT_COLOR,
+            minutes: directMinutes,
+            hasChildren: false,
+            isDirect: true,
+          },
+        ]
+      : [];
+
+  return {
+    current,
+    ancestors,
+    items: [...directItem, ...childItems].sort((a, b) => {
+      if (a.isDirect !== b.isDirect) return a.isDirect ? -1 : 1;
+      return b.minutes - a.minutes;
+    }),
   };
 }
 

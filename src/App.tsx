@@ -23,6 +23,7 @@ function App() {
   const [tab, setTab] = useState<Tab>("projects");
   const [hasResolvedInitialWorkspaceState, setHasResolvedInitialWorkspaceState] = useState(false);
   const authState = useAuthStore((s) => s.state);
+  const syncStatus = useAuthStore((s) => s.syncStatus);
 
   // All hooks must be called unconditionally before any early returns.
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
@@ -39,10 +40,10 @@ function App() {
       setHasResolvedInitialWorkspaceState(false);
       return;
     }
-    if (!workspaceLoading) {
+    if (!workspaceLoading && syncStatus.kind !== "initial-pull") {
       setHasResolvedInitialWorkspaceState(true);
     }
-  }, [authState.kind, workspaceLoading]);
+  }, [authState.kind, workspaceLoading, syncStatus.kind]);
 
   // Faza 7: open/close the per-workspace presence channel as the active
   // workspace (or auth state) changes.
@@ -93,6 +94,20 @@ function App() {
   }
 
   const visibleWorkspaces = workspaces.filter((w) => w.deleted_at === null);
+  const isResolvingCloudWorkspace =
+    authState.kind === "authed" &&
+    (workspaceLoading || syncStatus.kind === "initial-pull") &&
+    visibleWorkspaces.length === 0 &&
+    activeWorkspaceId === null;
+
+  if (isResolvingCloudWorkspace) {
+    return (
+      <div className="flex h-full items-center justify-center bg-neutral-950">
+        <span className="text-sm text-neutral-500">Ładowanie workspace...</span>
+      </div>
+    );
+  }
+
   if (
     hasResolvedInitialWorkspaceState &&
     visibleWorkspaces.length === 0 &&
