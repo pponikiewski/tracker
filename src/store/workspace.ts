@@ -75,6 +75,43 @@ function getCurrentUserId(): string | null {
   return authState.kind === 'authed' ? authState.user.id : null;
 }
 
+function workspaceEqual(a: Workspace, b: Workspace): boolean {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.owner_id === b.owner_id &&
+    a.created_at === b.created_at &&
+    a.updated_at === b.updated_at &&
+    a.deleted_at === b.deleted_at
+  );
+}
+
+function membershipEqual(a: WorkspaceMembership, b: WorkspaceMembership): boolean {
+  return (
+    a.workspace_id === b.workspace_id &&
+    a.user_id === b.user_id &&
+    a.role === b.role &&
+    a.joined_at === b.joined_at &&
+    a.display_role === b.display_role &&
+    a.display_role_updated_at === b.display_role_updated_at
+  );
+}
+
+function reuseList<T>(prev: T[], next: T[], eq: (a: T, b: T) => boolean, key: (x: T) => string): T[] {
+  const prevByKey = new Map(prev.map((x) => [key(x), x] as const));
+  let allReused = next.length === prev.length;
+  const reused = next.map((x, i) => {
+    const old = prevByKey.get(key(x));
+    if (old && eq(old, x)) {
+      if (allReused && prev[i] !== old) allReused = false;
+      return old;
+    }
+    allReused = false;
+    return x;
+  });
+  return allReused ? prev : reused;
+}
+
 export function replaceWorkspaceMemberships(
   current: WorkspaceMembership[],
   workspaceId: string,
@@ -411,7 +448,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         : userId
           ? await workspaceQueries.getUserMemberships(userId)
           : [];
-      set({ workspaces, memberships });
+      const prev = get();
+      const wReused = reuseList(prev.workspaces, workspaces, workspaceEqual, (w) => w.id);
+      const mReused = reuseList(
+        prev.memberships,
+        memberships,
+        membershipEqual,
+        (m) => `${m.workspace_id}:${m.user_id}`,
+      );
+      const wChanged = wReused !== prev.workspaces;
+      const mChanged = mReused !== prev.memberships;
+      if (!wChanged && !mChanged) return;
+      set({
+        workspaces: wChanged ? wReused : prev.workspaces,
+        memberships: mChanged ? mReused : prev.memberships,
+      });
     },
   };
 });

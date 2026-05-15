@@ -1,5 +1,21 @@
 import { create } from "zustand";
 import type { Resource, ResourceNode, ResourceType } from "@/lib/db/types";
+
+function resourceEqual(a: Resource, b: Resource): boolean {
+  return (
+    a.id === b.id &&
+    a.workspace_id === b.workspace_id &&
+    a.parent_id === b.parent_id &&
+    a.name === b.name &&
+    a.type === b.type &&
+    a.color === b.color &&
+    a.path === b.path &&
+    a.cached_minutes === b.cached_minutes &&
+    a.created_at === b.created_at &&
+    a.updated_at === b.updated_at &&
+    a.deleted_at === b.deleted_at
+  );
+}
 import {
   createEvent,
   createResource,
@@ -58,13 +74,37 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     const showLoading = options?.showLoading ?? true;
     const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     if (activeWorkspaceId === null) {
+      const cur = get();
+      if (cur.resources.length === 0 && cur.tree.length === 0 && !cur.loading && cur.error === null) {
+        return;
+      }
       set({ resources: [], tree: [], loading: false, error: null });
       return;
     }
-    set((state) => ({ loading: showLoading ? true : state.loading, error: null }));
+    if (showLoading) {
+      set((state) => (state.loading ? { error: null } : { loading: true, error: null }));
+    } else if (get().error !== null) {
+      set({ error: null });
+    }
     try {
-      const resources = await listActiveResources(activeWorkspaceId);
-      set({ resources, tree: buildTree(resources), loading: false });
+      const next = await listActiveResources(activeWorkspaceId);
+      const prev = get().resources;
+      const prevById = new Map(prev.map((r) => [r.id, r] as const));
+      let allReused = next.length === prev.length;
+      const reused: Resource[] = next.map((r, i) => {
+        const old = prevById.get(r.id);
+        if (old && resourceEqual(old, r)) {
+          if (allReused && prev[i] !== old) allReused = false;
+          return old;
+        }
+        allReused = false;
+        return r;
+      });
+      if (allReused) {
+        if (get().loading) set({ loading: false });
+        return;
+      }
+      set({ resources: reused, tree: buildTree(reused), loading: false });
     } catch (e) {
       set((state) => ({
         error: e instanceof Error ? e.message : String(e),

@@ -618,20 +618,34 @@ function isMissingTable(err: SbError): boolean {
 
   if (isInitial || hasPulledUiChanges) {
     // Reload UI only after real local changes. Incremental pulls with no new
-    // cloud data should be invisible to the user.
-    const { useWorkspaceStore } = await import('@/store/workspace');
-    const { useProjects } = await import('@/store/projects');
-    await useWorkspaceStore.getState().refresh();
-    const workspaceState = useWorkspaceStore.getState();
-    const activeWorkspaceStillExists =
-      workspaceState.activeWorkspaceId !== null &&
-      workspaceState.workspaces.some(
-        (w) => w.id === workspaceState.activeWorkspaceId && w.deleted_at === null,
-      );
-    if (!activeWorkspaceStillExists) {
-      await workspaceState.restoreActiveWorkspace(userId);
+    // cloud data should be invisible to the user. Refresh per-entity so a
+    // workspace-only change does not re-render the resource tree (and vice
+    // versa), and so no-op refreshes don't churn array references.
+    const wsChanged =
+      isInitial || wsMerge.writeSqlite.length > 0 || memMerge.writeSqlite.length > 0;
+    const projectsChanged =
+      isInitial ||
+      rMerge.writeSqlite.length > 0 ||
+      eMerge.writeSqlite.length > 0 ||
+      aMerge.writeSqlite.length > 0;
+
+    if (wsChanged) {
+      const { useWorkspaceStore } = await import('@/store/workspace');
+      await useWorkspaceStore.getState().refresh();
+      const workspaceState = useWorkspaceStore.getState();
+      const activeWorkspaceStillExists =
+        workspaceState.activeWorkspaceId !== null &&
+        workspaceState.workspaces.some(
+          (w) => w.id === workspaceState.activeWorkspaceId && w.deleted_at === null,
+        );
+      if (!activeWorkspaceStillExists) {
+        await workspaceState.restoreActiveWorkspace(userId);
+      }
     }
-    await useProjects.getState().refresh({ showLoading: false });
+    if (projectsChanged) {
+      const { useProjects } = await import('@/store/projects');
+      await useProjects.getState().refresh({ showLoading: false });
+    }
   }
 
   // Drain newly enqueued local-wins
