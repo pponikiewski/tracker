@@ -23,7 +23,7 @@ import {
   type TrackerBackup,
 } from "./backupFormat";
 
-const APP_VERSION = "0.1.3";
+const APP_VERSION = "0.1.4";
 
 interface RestoreResult {
   audit: AuditReport;
@@ -160,6 +160,18 @@ async function recalcAllCachedMinutes(): Promise<number> {
   return resources.length;
 }
 
+async function promoteOrphanRootsToProject(): Promise<number> {
+  const db = await getDb();
+  const result = await db.execute(
+    `UPDATE resources
+        SET type = 'project'
+      WHERE parent_id IS NULL
+        AND type <> 'project'
+        AND deleted_at IS NULL`,
+  );
+  return result.rowsAffected ?? 0;
+}
+
 async function deleteOrphanAssignmentsLocal(): Promise<number> {
   const db = await getDb();
   const result = await db.execute(
@@ -214,12 +226,14 @@ export async function repairLocalData(): Promise<{
   resourcesRecalculated: number;
   orphanAssignments: number;
   resourcesMovedToParentWorkspace: number;
+  rootsPromotedToProject: number;
   audit: AuditReport;
 }> {
   const db = await getDb();
   const orphanedOutboxRows = await cleanupOrphanedOutboxEntries(db);
   const localWorkspaceOutboxRows = await deleteLocalWorkspaceOutboxRows();
   const resourcesMovedToParentWorkspace = await cascadeWorkspaceFromParent();
+  const rootsPromotedToProject = await promoteOrphanRootsToProject();
   const orphanAssignments = await deleteOrphanAssignmentsLocal();
   const resourcesRecalculated = await recalcAllCachedMinutes();
   return {
@@ -228,6 +242,7 @@ export async function repairLocalData(): Promise<{
     resourcesRecalculated,
     orphanAssignments,
     resourcesMovedToParentWorkspace,
+    rootsPromotedToProject,
     audit: await runLocalAudit(),
   };
 }

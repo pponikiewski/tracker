@@ -189,7 +189,8 @@ export function BackupView() {
       setAudit(result.audit);
       setMessage(
         `Naprawiono: outbox ${result.orphanedOutboxRows + result.localWorkspaceOutboxRows}, ` +
-          `zasoby przeniesione do workspace rodzica ${result.resourcesMovedToParentWorkspace}, ` +
+          `przeniesione do workspace rodzica ${result.resourcesMovedToParentWorkspace}, ` +
+          `promowane na projekt ${result.rootsPromotedToProject}, ` +
           `usunięte sieroce assignments ${result.orphanAssignments}, ` +
           `przeliczono ${result.resourcesRecalculated} zasobów.`,
       );

@@ -328,11 +328,6 @@ export function backupFilename(date = new Date()): string {
 export function auditBackupTables(tables: BackupTables, generatedAt = new Date()): AuditReport {
   const issues: AuditIssue[] = [];
   const workspaces = new Map(tables.workspaces.map((w) => [w.id, w]));
-  const memberships = new Set(
-    tables.workspace_memberships
-      .filter((m) => m.deleted_at === null)
-      .map((m) => `${m.workspace_id}:${m.user_id}`),
-  );
   const resources = new Map(tables.resources.map((r) => [r.id, r]));
 
   for (const membership of tables.workspace_memberships) {
@@ -442,15 +437,6 @@ export function auditBackupTables(tables: BackupTables, generatedAt = new Date()
         entity: "assignment",
         entity_id: assignment.id,
         message: "Assignment points to a missing resource.",
-      });
-    }
-    if (!memberships.has(`${assignment.workspace_id}:${assignment.user_id}`)) {
-      issues.push({
-        severity: "warning",
-        code: "assignment_missing_member",
-        entity: "assignment",
-        entity_id: assignment.id,
-        message: "Assignment user is not an active local member of the workspace.",
       });
     }
   }
