@@ -23,7 +23,7 @@ import {
   type TrackerBackup,
 } from "./backupFormat";
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "0.1.2";
 
 interface RestoreResult {
   audit: AuditReport;
@@ -160,20 +160,74 @@ async function recalcAllCachedMinutes(): Promise<number> {
   return resources.length;
 }
 
+async function deleteOrphanAssignmentsLocal(): Promise<number> {
+  const db = await getDb();
+  const result = await db.execute(
+    `DELETE FROM assignments
+       WHERE id IN (
+         SELECT a.id FROM assignments a
+         LEFT JOIN workspace_memberships m
+           ON m.workspace_id = a.workspace_id
+          AND m.user_id = a.user_id
+          AND m.deleted_at IS NULL
+         WHERE m.user_id IS NULL
+       )`,
+  );
+  return result.rowsAffected ?? 0;
+}
+
+async function cascadeWorkspaceFromParent(): Promise<number> {
+  const db = await getDb();
+  let totalFixed = 0;
+  for (let i = 0; i < 16; i++) {
+    const result = await db.execute(
+      `UPDATE resources
+          SET workspace_id = (
+            SELECT p.workspace_id FROM resources p WHERE p.id = resources.parent_id
+          )
+        WHERE parent_id IS NOT NULL
+          AND workspace_id <> (
+            SELECT p.workspace_id FROM resources p WHERE p.id = resources.parent_id
+          )`,
+    );
+    const fixed = result.rowsAffected ?? 0;
+    if (fixed === 0) break;
+    totalFixed += fixed;
+  }
+  if (totalFixed > 0) {
+    await db.execute(
+      `UPDATE events
+          SET workspace_id = (
+            SELECT r.workspace_id FROM resources r WHERE r.id = events.resource_id
+          )
+        WHERE workspace_id <> (
+          SELECT r.workspace_id FROM resources r WHERE r.id = events.resource_id
+        )`,
+    );
+  }
+  return totalFixed;
+}
+
 export async function repairLocalData(): Promise<{
   orphanedOutboxRows: number;
   localWorkspaceOutboxRows: number;
   resourcesRecalculated: number;
+  orphanAssignments: number;
+  resourcesMovedToParentWorkspace: number;
   audit: AuditReport;
 }> {
   const db = await getDb();
   const orphanedOutboxRows = await cleanupOrphanedOutboxEntries(db);
   const localWorkspaceOutboxRows = await deleteLocalWorkspaceOutboxRows();
+  const resourcesMovedToParentWorkspace = await cascadeWorkspaceFromParent();
+  const orphanAssignments = await deleteOrphanAssignmentsLocal();
   const resourcesRecalculated = await recalcAllCachedMinutes();
   return {
     orphanedOutboxRows,
     localWorkspaceOutboxRows,
     resourcesRecalculated,
+    orphanAssignments,
+    resourcesMovedToParentWorkspace,
     audit: await runLocalAudit(),
   };
 }

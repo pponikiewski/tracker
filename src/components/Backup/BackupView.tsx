@@ -188,7 +188,10 @@ export function BackupView() {
       await refreshAppState();
       setAudit(result.audit);
       setMessage(
-        `Naprawiono: outbox ${result.orphanedOutboxRows + result.localWorkspaceOutboxRows}, przeliczono ${result.resourcesRecalculated} zasobów.`,
+        `Naprawiono: outbox ${result.orphanedOutboxRows + result.localWorkspaceOutboxRows}, ` +
+          `zasoby przeniesione do workspace rodzica ${result.resourcesMovedToParentWorkspace}, ` +
+          `usunięte sieroce assignments ${result.orphanAssignments}, ` +
+          `przeliczono ${result.resourcesRecalculated} zasobów.`,
       );
     } catch (repairError) {
       setError(

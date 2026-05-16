@@ -128,7 +128,7 @@ export function UpdateStatusBadge() {
       : status === "installing"
         ? (progress ?? "Instalowanie...")
         : status === "error"
-          ? "Błąd aktualizacji"
+          ? (message ?? "Błąd aktualizacji")
           : status === "current"
             ? "Aktualne"
             : "Aktualizacje";
