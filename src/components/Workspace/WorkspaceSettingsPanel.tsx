@@ -112,6 +112,14 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const [leaveBusy, setLeaveBusy] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   // Sync name field when workspace changes
   useEffect(() => {
     if (workspace) {

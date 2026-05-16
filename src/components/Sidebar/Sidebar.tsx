@@ -1,8 +1,6 @@
 import { BarChart3, Database, FolderTree, History, ScrollText, Users } from "lucide-react";
 import { AuthGate } from "@/components/Auth/AuthGate";
-import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { PresenceBar } from "@/components/Presence/PresenceBar";
-import { UpdateStatusBadge } from "@/components/Updater/UpdateStatusBadge";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
 import logoUrl from "@/assets/tracker-logo.svg";
 
@@ -73,8 +71,6 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
 
       <div className="mt-auto flex flex-col gap-2 border-t border-neutral-800 pt-3">
         <PresenceBar />
-        <UpdateStatusBadge />
-        <SyncStatusBadge />
         <AuthGate />
       </div>
     </aside>

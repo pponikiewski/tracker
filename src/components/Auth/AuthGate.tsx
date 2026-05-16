@@ -2,6 +2,8 @@ import { LogOut, User } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { AuthModal } from './AuthModal';
+import { SyncStatusBadge } from './SyncStatusBadge';
+import { UpdateStatusBadge } from '@/components/Updater/UpdateStatusBadge';
 import { ProfileSettingsPanel } from '@/components/Profile/ProfileSettingsPanel';
 import { supabase } from '@/lib/supabase';
 
@@ -19,8 +21,8 @@ export function AuthGate({ menuPlacement = 'top' }: AuthGateProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const menuPositionClass =
     menuPlacement === 'bottom-end'
-      ? 'right-0 top-full mt-1 w-56'
-      : 'bottom-full left-0 mb-1 w-full min-w-40';
+      ? 'right-0 top-full mt-1 w-64'
+      : 'bottom-full left-0 mb-1 w-full min-w-56';
 
   // Req 1.2: hide entirely when supabase client is null (env vars missing)
   if (!supabase) return null;
@@ -64,6 +66,10 @@ export function AuthGate({ menuPlacement = 'top' }: AuthGateProps) {
           role="menu"
           className={`absolute z-50 overflow-hidden rounded border border-neutral-700 bg-neutral-800 shadow-xl ${menuPositionClass}`}
         >
+          <div className="flex flex-col gap-1.5 border-b border-neutral-700 p-2">
+            <SyncStatusBadge />
+            <UpdateStatusBadge />
+          </div>
           <button
             role="menuitem"
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-neutral-100"

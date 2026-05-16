@@ -41,6 +41,14 @@ export function ProfileSettingsPanel({ onClose }: ProfileSettingsPanelProps) {
     }
   }, [profile?.display_name]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   // ---- Avatar state ----
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
