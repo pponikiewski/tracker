@@ -1,4 +1,5 @@
 import { getInitials, getAvatarColor } from '@/lib/profile/avatarService';
+import { useProfileStore } from '@/store/profile';
 
 export interface AvatarBadgeProps {
   userId: string;
@@ -21,6 +22,7 @@ const SIZE_CLASSES: Record<NonNullable<AvatarBadgeProps['size']>, string> = {
  */
 export function AvatarBadge({ userId, displayName, avatarUrl, size = 'sm' }: AvatarBadgeProps) {
   const sizeClass = SIZE_CLASSES[size];
+  const customColor = useProfileStore((s) => s.profiles[userId]?.avatar_color ?? null);
 
   // Guard against empty strings / whitespace (would cause <img src=""> to fire
   // a request to the page origin and produce confusing 404s).
@@ -32,13 +34,13 @@ export function AvatarBadge({ userId, displayName, avatarUrl, size = 'sm' }: Ava
       <img
         src={safeUrl}
         alt={displayName}
-        className={`${sizeClass} rounded-full object-cover shrink-0`}
+        className={`${sizeClass} block rounded-full object-cover shrink-0`}
       />
     );
   }
 
   const initials = getInitials(displayName);
-  const bgColor = getAvatarColor(userId);
+  const bgColor = customColor ?? getAvatarColor(userId);
 
   return (
     <span

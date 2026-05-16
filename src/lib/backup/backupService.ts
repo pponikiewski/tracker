@@ -365,9 +365,15 @@ async function insertBackupTables(tables: BackupTables): Promise<void> {
 
   for (const row of tables.profiles_cache) {
     await db.execute(
-      `INSERT INTO profiles_cache (user_id, display_name, avatar_url, cached_at)
-       VALUES ($1, $2, $3, $4)`,
-      [row.user_id, row.display_name, row.avatar_url, row.cached_at],
+      `INSERT INTO profiles_cache (user_id, display_name, avatar_url, avatar_color, cached_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        row.user_id,
+        row.display_name,
+        row.avatar_url,
+        row.avatar_color ?? null,
+        row.cached_at,
+      ],
     );
   }
 

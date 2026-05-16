@@ -5,6 +5,21 @@ import { validateDisplayName } from '@/lib/profile/profileService';
 import { validateAvatarFile } from '@/lib/profile/avatarService';
 import { AvatarBadge } from '@/components/Profile/AvatarBadge';
 
+const AVATAR_COLOR_PALETTE = [
+  '#ef4444',
+  '#f97316',
+  '#f59e0b',
+  '#84cc16',
+  '#10b981',
+  '#14b8a6',
+  '#06b6d4',
+  '#3b82f6',
+  '#6366f1',
+  '#8b5cf6',
+  '#a855f7',
+  '#ec4899',
+];
+
 interface ProfileSettingsPanelProps {
   onClose: () => void;
 }
@@ -22,6 +37,8 @@ export function ProfileSettingsPanel({ onClose }: ProfileSettingsPanelProps) {
   const getProfile = useProfileStore((s) => s.getProfile);
   const updateDisplayName = useProfileStore((s) => s.updateDisplayName);
   const uploadAvatar = useProfileStore((s) => s.uploadAvatar);
+  const clearAvatar = useProfileStore((s) => s.clearAvatar);
+  const setAvatarColor = useProfileStore((s) => s.setAvatarColor);
 
   // Derive current profile (cached or fallback)
   const profile = userId ? getProfile(userId) : null;
@@ -199,23 +216,44 @@ export function ProfileSettingsPanel({ onClose }: ProfileSettingsPanelProps) {
                   aria-label="Wybierz zdjęcie profilowe"
                 />
 
-                {/* Upload button — disabled during upload (Req 3.7) */}
-                <button
-                  type="button"
-                  onClick={handleUploadClick}
-                  disabled={avatarBusy}
-                  className="px-3 py-1.5 text-xs bg-neutral-700 text-neutral-200 rounded hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                >
-                  {/* Loading indicator during upload (Req 3.7) */}
-                  {avatarBusy ? (
-                    <>
-                      <span className="inline-block h-3 w-3 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" aria-hidden="true" />
-                      Przesyłanie…
-                    </>
-                  ) : (
-                    'Zmień zdjęcie'
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleUploadClick}
+                    disabled={avatarBusy}
+                    className="px-3 py-1.5 text-xs bg-neutral-700 text-neutral-200 rounded hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                  >
+                    {avatarBusy ? (
+                      <>
+                        <span className="inline-block h-3 w-3 rounded-full border-2 border-neutral-400 border-t-transparent animate-spin" aria-hidden="true" />
+                        Przesyłanie…
+                      </>
+                    ) : (
+                      'Zmień zdjęcie'
+                    )}
+                  </button>
+
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setAvatarError(null);
+                        setAvatarBusy(true);
+                        try {
+                          await clearAvatar();
+                        } catch (err) {
+                          setAvatarError((err as Error).message);
+                        } finally {
+                          setAvatarBusy(false);
+                        }
+                      }}
+                      disabled={avatarBusy}
+                      className="px-3 py-1.5 text-xs border border-red-900 text-red-300 rounded hover:bg-red-950/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Usuń zdjęcie
+                    </button>
                   )}
-                </button>
+                </div>
 
                 <p className="text-xs text-neutral-500">
                   JPEG, PNG lub WebP · maks. 256 KB · maks. 2048×2048 px
@@ -223,11 +261,57 @@ export function ProfileSettingsPanel({ onClose }: ProfileSettingsPanelProps) {
               </div>
             </div>
 
-            {/* Inline avatar error (Req 3.6, 3.9) */}
             {avatarError && (
               <p className="text-red-400 text-xs mt-2" role="alert">
                 {avatarError}
               </p>
+            )}
+
+            {/* Color picker — visible when no avatar uploaded */}
+            {!avatarUrl && (
+              <div className="mt-4">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 mb-2">
+                  Kolor tła inicjałów
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {AVATAR_COLOR_PALETTE.map((color) => {
+                    const active = (profile?.avatar_color ?? null) === color;
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        title={color}
+                        onClick={async () => {
+                          setAvatarError(null);
+                          try {
+                            await setAvatarColor(color);
+                          } catch (err) {
+                            setAvatarError((err as Error).message);
+                          }
+                        }}
+                        className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${active ? 'border-white' : 'border-transparent'}`}
+                        style={{ backgroundColor: color }}
+                        aria-label={`Wybierz kolor ${color}`}
+                      />
+                    );
+                  })}
+                  <button
+                    type="button"
+                    title="Domyślny (auto)"
+                    onClick={async () => {
+                      setAvatarError(null);
+                      try {
+                        await setAvatarColor(null);
+                      } catch (err) {
+                        setAvatarError((err as Error).message);
+                      }
+                    }}
+                    className={`h-7 w-7 rounded-full border-2 border-dashed text-xs text-neutral-400 transition-colors hover:text-neutral-100 ${(profile?.avatar_color ?? null) === null ? 'border-white text-white' : 'border-neutral-600'}`}
+                  >
+                    A
+                  </button>
+                </div>
+              </div>
             )}
           </section>
 

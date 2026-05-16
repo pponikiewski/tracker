@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS profiles_cache (
   user_id      TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
   avatar_url   TEXT,
+  avatar_color TEXT,
   cached_at    INTEGER NOT NULL
 );
 

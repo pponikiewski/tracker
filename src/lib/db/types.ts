@@ -115,6 +115,7 @@ export interface CachedProfile {
   user_id: string;
   display_name: string;
   avatar_url: string | null;
+  avatar_color: string | null;
   cached_at: number;
 }
 

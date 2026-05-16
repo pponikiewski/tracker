@@ -249,8 +249,10 @@ async function ensurePhase6CoreSchema(db: Database): Promise<void> {
     user_id      TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
     avatar_url   TEXT,
+    avatar_color TEXT,
     cached_at    INTEGER NOT NULL
   )`);
+  await ensureColumn(db, "profiles_cache", "avatar_color", "avatar_color TEXT");
 
   await ensureColumn(db, "events", "user_id", "user_id TEXT");
 }

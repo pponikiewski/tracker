@@ -222,10 +222,18 @@ function parseAssignment(row: Record<string, unknown>, context: string): Assignm
 }
 
 function parseProfile(row: Record<string, unknown>, context: string): CachedProfile {
+  const rawColor = row["avatar_color"];
+  const avatarColor =
+    rawColor === undefined || rawColor === null
+      ? null
+      : typeof rawColor === "string"
+        ? rawColor
+        : null;
   return {
     user_id: requiredString(row, "user_id", context),
     display_name: requiredString(row, "display_name", context),
     avatar_url: nullableString(row, "avatar_url", context),
+    avatar_color: avatarColor,
     cached_at: requiredNumber(row, "cached_at", context),
   };
 }
