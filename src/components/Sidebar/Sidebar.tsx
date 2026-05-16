@@ -4,6 +4,7 @@ import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { PresenceBar } from "@/components/Presence/PresenceBar";
 import { UpdateStatusBadge } from "@/components/Updater/UpdateStatusBadge";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
+import logoUrl from "@/assets/tracker-logo.svg";
 
 export type Tab = "projects" | "dashboard" | "history" | "activity" | "backup" | "team";
 
@@ -35,9 +36,11 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
   return (
     <aside className="flex w-48 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950 px-3 py-4">
       <div className="flex items-center gap-2 px-1">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-600 text-[11px] font-bold text-white shadow-sm">
-          T
-        </span>
+        <img
+          src={logoUrl}
+          alt="tracker"
+          className="h-7 w-7 shrink-0 rounded-md shadow-sm"
+        />
         <span className="text-sm font-semibold tracking-tight text-neutral-100">tracker</span>
       </div>
 

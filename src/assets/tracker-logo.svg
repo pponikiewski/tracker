@@ -1,0 +1,51 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A1020"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#2DD4FF"/>
+      <stop offset="1" stop-color="#2563FF"/>
+    </linearGradient>
+
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#34D399"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="80" y="80" width="864" height="864" rx="120" fill="url(#bg)"/>
+
+  <!-- Left person -->
+  <circle cx="350" cy="390" r="58" fill="url(#green)"/>
+  <path d="M275 525C275 480 312 445 357 445H365C410 445 447 480 447 525V565H275V525Z" fill="url(#green)"/>
+
+  <!-- Center person -->
+  <circle cx="512" cy="340" r="72" fill="url(#blue)"/>
+  <path d="M390 560C390 492 445 438 513 438H515C583 438 638 492 638 560V620H390V560Z" fill="url(#blue)"/>
+
+  <!-- Right person -->
+  <circle cx="674" cy="390" r="58" fill="url(#purple)"/>
+  <path d="M599 525C599 480 636 445 681 445H689C734 445 771 480 771 525V565H599V525Z" fill="url(#purple)"/>
+
+  <!-- Check circle -->
+  <path d="M320 710C320 598 410 508 522 508C634 508 724 598 724 710C724 822 634 912 522 912C410 912 320 822 320 710Z"
+        stroke="#CBD5E1"
+        stroke-width="28"
+        fill="none"
+        stroke-linecap="round"/>
+
+  <!-- Checkmark -->
+  <path d="M435 715L505 785L650 640"
+        stroke="#E2E8F0"
+        stroke-width="36"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>
