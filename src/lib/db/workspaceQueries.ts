@@ -245,7 +245,11 @@ export async function updateMembershipDisplayRole(
  * Soft-deletes a workspace membership and enqueues the tombstone for sync.
  * Requirements: 7.2
  */
-export async function deleteMembership(workspaceId: string, userId: string): Promise<void> {
+export async function deleteMembership(
+  workspaceId: string,
+  userId: string,
+  action: "member.remove" | "member.leave" = "member.remove",
+): Promise<void> {
   await withTx(async (db) => {
     const ts = now();
 
@@ -275,11 +279,12 @@ export async function deleteMembership(workspaceId: string, userId: string): Pro
 
     await recordActivity(db, {
       workspaceId,
-      action: "member.remove",
+      action,
       entityType: "workspace_membership",
       entityId: userId,
       entityName: userId,
-      summary: "Usunięto członka z workspace",
+      summary:
+        action === "member.leave" ? "Członek opuścił workspace" : "Usunięto członka z workspace",
       metadata: { user_id: userId },
     });
   });

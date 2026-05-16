@@ -53,6 +53,7 @@ interface WorkspaceState {
   setActiveWorkspace: (id: string) => Promise<void>;
   restoreActiveWorkspace: (userId: string | null) => Promise<void>;
   removeMember: (workspaceId: string, userId: string) => Promise<void>;
+  leaveWorkspace: (workspaceId: string) => Promise<void>;
   updateMemberDisplayRole: (
     workspaceId: string,
     userId: string,
@@ -75,6 +76,14 @@ interface WorkspaceState {
 function getCurrentUserId(): string | null {
   const authState = useAuthStore.getState().state;
   return authState.kind === "authed" ? authState.user.id : null;
+}
+
+function clearStoredActiveWorkspace(userId: string | null): void {
+  try {
+    localStorage.removeItem(lsKey(userId));
+  } catch {
+    // localStorage may be unavailable in some environments; ignore
+  }
 }
 
 function workspaceEqual(a: Workspace, b: Workspace): boolean {
@@ -148,7 +157,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       const { workspaces, memberships } = get();
       const userId = getCurrentUserId();
       const activeMembershipWorkspaceIds = new Set(
-        memberships.filter((m) => m.deleted_at === null).map((m) => m.workspace_id),
+        memberships
+          .filter((m) => m.deleted_at === null && (!userId || m.user_id === userId))
+          .map((m) => m.workspace_id),
       );
       return workspaces
         .filter((w) => {
@@ -331,6 +342,52 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       await get().refresh();
     },
 
+    // ---- leaveWorkspace ----
+
+    leaveWorkspace: async (workspaceId: string) => {
+      const userId = getCurrentUserId();
+      if (!userId) throw new Error("Musisz być zalogowany, aby opuścić workspace.");
+
+      const membership = get().memberships.find(
+        (m) => m.workspace_id === workspaceId && m.user_id === userId && m.deleted_at === null,
+      );
+
+      if (!membership) {
+        throw new Error("Nie jesteś aktywnym członkiem tego workspace.");
+      }
+
+      if (membership.role === "owner") {
+        throw new Error(
+          "Właściciel nie może opuścić workspace. Usuń workspace albo przekaż własność.",
+        );
+      }
+
+      if (!supabase) throw new Error("Supabase not configured");
+      const deletedAt = new Date().toISOString();
+
+      const { error } = await supabase
+        .from("workspace_memberships")
+        .update({ deleted_at: deletedAt })
+        .match({ workspace_id: workspaceId, user_id: userId });
+
+      if (error) throw new Error(error.message);
+
+      await workspaceQueries.deleteMembership(workspaceId, userId, "member.leave");
+      await softDeleteAssignmentsForUser(workspaceId, userId);
+      await useAssignmentStore.getState().loadAssignments(workspaceId);
+      await get().refresh();
+
+      if (get().activeWorkspaceId !== workspaceId) return;
+
+      const available = get().userWorkspaces();
+      if (available.length > 0) {
+        await get().setActiveWorkspace(available[0]!.id);
+      } else {
+        clearStoredActiveWorkspace(userId);
+        set({ activeWorkspaceId: null });
+      }
+    },
+
     // ---- updateMemberDisplayRole ----
 
     updateMemberDisplayRole: async (workspaceId, userId, displayRole) => {
@@ -471,11 +528,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         ? allWorkspaces.filter((w) => w.owner_id !== "local")
         : allWorkspaces;
       const activeWorkspaceId = get().activeWorkspaceId;
-      const memberships = activeWorkspaceId
-        ? await workspaceQueries.listMemberships(activeWorkspaceId)
-        : userId
-          ? await workspaceQueries.getUserMemberships(userId)
-          : [];
+      const memberships =
+        activeWorkspaceId && userId
+          ? [
+              ...(await workspaceQueries.getUserMemberships(userId)).filter(
+                (m) => m.workspace_id !== activeWorkspaceId,
+              ),
+              ...(await workspaceQueries.listMemberships(activeWorkspaceId)),
+            ]
+          : activeWorkspaceId
+            ? await workspaceQueries.listMemberships(activeWorkspaceId)
+            : userId
+              ? await workspaceQueries.getUserMemberships(userId)
+              : [];
       const prev = get();
       const wReused = reuseList(prev.workspaces, workspaces, workspaceEqual, (w) => w.id);
       const mReused = reuseList(

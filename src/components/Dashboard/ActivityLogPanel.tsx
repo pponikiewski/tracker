@@ -22,6 +22,7 @@ const ACTION_LABELS: Record<string, string> = {
   "workspace.delete": "Workspace",
   "member.display_role": "Zespół",
   "member.remove": "Zespół",
+  "member.leave": "Zespół",
   "member.join": "Zespół",
   "assignment.create": "Przypisanie",
   "assignment.restore": "Przypisanie",

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useWorkspaceStore } from '@/store/workspace';
-import { useAuthStore } from '@/store/auth';
-import { useProfileStore } from '@/store/profile';
-import { AvatarBadge } from '@/components/Profile/AvatarBadge';
-import { JOIN_CODE_TTL_MS, type JoinCode } from '@/lib/workspace/joinCodeService';
-import type { WorkspaceMembership } from '@/lib/db/types';
+import { useState, useEffect } from "react";
+import { useWorkspaceStore } from "@/store/workspace";
+import { useAuthStore } from "@/store/auth";
+import { useProfileStore } from "@/store/profile";
+import { AvatarBadge } from "@/components/Profile/AvatarBadge";
+import { JOIN_CODE_TTL_MS, type JoinCode } from "@/lib/workspace/joinCodeService";
+import type { WorkspaceMembership } from "@/lib/db/types";
 
 interface WorkspaceSettingsPanelProps {
   workspaceId: string;
@@ -13,18 +13,18 @@ interface WorkspaceSettingsPanelProps {
 
 function validateName(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed.length < 1) return 'Nazwa nie może być pusta.';
-  if (trimmed.length > 80) return 'Nazwa może mieć maksymalnie 80 znaków.';
+  if (trimmed.length < 1) return "Nazwa nie może być pusta.";
+  if (trimmed.length > 80) return "Nazwa może mieć maksymalnie 80 znaków.";
   return null;
 }
 
 /** Formats milliseconds as `m:ss`. Returns '0:00' for non-positive values. */
 function formatCountdown(ms: number): string {
-  if (ms <= 0) return '0:00';
+  if (ms <= 0) return "0:00";
   const totalSec = Math.ceil(ms / 1000);
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 /** Groups a 6-digit code as "123 456" for readability. */
@@ -48,12 +48,13 @@ function MemberSkeleton() {
 
 export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettingsPanelProps) {
   const authState = useAuthStore((s) => s.state);
-  const currentUserId = authState.kind === 'authed' ? authState.user.id : null;
+  const currentUserId = authState.kind === "authed" ? authState.user.id : null;
 
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const memberships = useWorkspaceStore((s) => s.memberships);
   const renameWorkspace = useWorkspaceStore((s) => s.renameWorkspace);
   const removeMember = useWorkspaceStore((s) => s.removeMember);
+  const leaveWorkspace = useWorkspaceStore((s) => s.leaveWorkspace);
   const generateJoinCode = useWorkspaceStore((s) => s.generateJoinCode);
   const listActiveJoinCodes = useWorkspaceStore((s) => s.listActiveJoinCodes);
   const revokeJoinCode = useWorkspaceStore((s) => s.revokeJoinCode);
@@ -68,10 +69,16 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const isOwner =
     currentUserId !== null &&
     memberships.some(
+      (m) => m.workspace_id === workspaceId && m.user_id === currentUserId && m.role === "owner",
+    );
+  const canLeaveWorkspace =
+    currentUserId !== null &&
+    memberships.some(
       (m) =>
         m.workspace_id === workspaceId &&
         m.user_id === currentUserId &&
-        m.role === 'owner',
+        m.role === "member" &&
+        m.deleted_at === null,
     );
 
   const workspaceMembers: WorkspaceMembership[] = memberships.filter(
@@ -82,7 +89,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const [profilesFetched, setProfilesFetched] = useState(false);
 
   // ---- Name section state ----
-  const [name, setName] = useState(workspace?.name ?? '');
+  const [name, setName] = useState(workspace?.name ?? "");
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameBusy, setNameBusy] = useState(false);
   const [nameSuccess, setNameSuccess] = useState(false);
@@ -102,6 +109,8 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   // ---- Delete workspace state ----
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   // Sync name field when workspace changes
   useEffect(() => {
@@ -192,7 +201,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
       setNameSuccess(true);
       setTimeout(() => setNameSuccess(false), 2000);
     } catch (error) {
-      setNameSubmitError(error instanceof Error ? error.message : 'Nieznany błąd');
+      setNameSubmitError(error instanceof Error ? error.message : "Nieznany błąd");
     } finally {
       setNameBusy(false);
     }
@@ -204,7 +213,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
     try {
       await removeMember(workspaceId, userId);
     } catch (error) {
-      setRemoveError(error instanceof Error ? error.message : 'Nieznany błąd');
+      setRemoveError(error instanceof Error ? error.message : "Nieznany błąd");
     } finally {
       setRemovingMemberId(null);
     }
@@ -217,7 +226,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
       const code = await generateJoinCode(workspaceId);
       setActiveCode(code);
     } catch (error) {
-      setCodeError(error instanceof Error ? error.message : 'Nieznany błąd');
+      setCodeError(error instanceof Error ? error.message : "Nieznany błąd");
     } finally {
       setCodeBusy(false);
     }
@@ -229,7 +238,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
       await revokeJoinCode(activeCode.code);
       setActiveCode(null);
     } catch (error) {
-      setCodeError(error instanceof Error ? error.message : 'Nieznany błąd');
+      setCodeError(error instanceof Error ? error.message : "Nieznany błąd");
     }
   };
 
@@ -245,7 +254,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
 
   const handleDeleteWorkspace = async () => {
     const confirmed = window.confirm(
-      `Czy na pewno chcesz usunąć workspace "${workspace?.name ?? ''}"? Tej operacji nie można cofnąć.`,
+      `Czy na pewno chcesz usunąć workspace "${workspace?.name ?? ""}"? Tej operacji nie można cofnąć.`,
     );
     if (!confirmed) return;
     setDeleteError(null);
@@ -254,13 +263,28 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
       await deleteWorkspace(workspaceId);
       onClose();
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : 'Nieznany błąd');
+      setDeleteError(error instanceof Error ? error.message : "Nieznany błąd");
       setDeleteBusy(false);
     }
   };
 
-  const roleLabel = (role: 'owner' | 'member') =>
-    role === 'owner' ? 'Właściciel' : 'Członek';
+  const handleLeaveWorkspace = async () => {
+    const confirmed = window.confirm(
+      `Czy na pewno chcesz opuścić workspace "${workspace?.name ?? ""}"? Utracisz dostęp do jego projektów i raportów.`,
+    );
+    if (!confirmed) return;
+    setLeaveError(null);
+    setLeaveBusy(true);
+    try {
+      await leaveWorkspace(workspaceId);
+      onClose();
+    } catch (error) {
+      setLeaveError(error instanceof Error ? error.message : "Nieznany błąd");
+      setLeaveBusy(false);
+    }
+  };
+
+  const roleLabel = (role: "owner" | "member") => (role === "owner" ? "Właściciel" : "Członek");
 
   const membersLoading = !profilesFetched || profilesLoading;
 
@@ -304,8 +328,8 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                     maxLength={100}
                     className={`w-full bg-neutral-800 border rounded px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none transition-colors ${
                       nameError
-                        ? 'border-red-500 focus:border-red-400'
-                        : 'border-neutral-700 focus:border-blue-500'
+                        ? "border-red-500 focus:border-red-400"
+                        : "border-neutral-700 focus:border-blue-500"
                     }`}
                     autoComplete="off"
                   />
@@ -327,13 +351,13 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                     disabled={nameBusy || validateName(name) !== null}
                     className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {nameBusy ? '…' : 'Zapisz'}
+                    {nameBusy ? "…" : "Zapisz"}
                   </button>
                 </div>
               </form>
             ) : (
               <p className="text-sm text-neutral-200 bg-neutral-800 border border-neutral-700 rounded px-3 py-2">
-                {workspace?.name ?? '—'}
+                {workspace?.name ?? "—"}
               </p>
             )}
           </section>
@@ -377,9 +401,9 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                         </span>
                         <span
                           className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
-                            m.role === 'owner'
-                              ? 'bg-amber-900/50 text-amber-300'
-                              : 'bg-neutral-700 text-neutral-400'
+                            m.role === "owner"
+                              ? "bg-amber-900/50 text-amber-300"
+                              : "bg-neutral-700 text-neutral-400"
                           }`}
                         >
                           {roleLabel(m.role)}
@@ -392,7 +416,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                           disabled={removingMemberId === m.user_id}
                           className="ml-2 text-xs text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
                         >
-                          {removingMemberId === m.user_id ? '…' : 'Usuń'}
+                          {removingMemberId === m.user_id ? "…" : "Usuń"}
                         </button>
                       )}
                     </li>
@@ -409,8 +433,8 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                 Kod dołączenia
               </h3>
               <p className="mb-3 text-xs text-neutral-500">
-                Wygeneruj 6-cyfrowy kod, który Twoi współpracownicy mogą wpisać, aby dołączyć
-                do tego workspace. Kod jest jednorazowy i wygasa po 5 minutach.
+                Wygeneruj 6-cyfrowy kod, który Twoi współpracownicy mogą wpisać, aby dołączyć do
+                tego workspace. Kod jest jednorazowy i wygasa po 5 minutach.
               </p>
 
               {codeError && (
@@ -426,9 +450,9 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                       {formatCode(activeCode.code)}
                     </div>
                     <p className="mt-2 text-xs text-neutral-400">
-                      Wygasa za{' '}
+                      Wygasa za{" "}
                       <span
-                        className={`font-mono ${msLeft < 30_000 ? 'text-amber-400' : 'text-neutral-200'}`}
+                        className={`font-mono ${msLeft < 30_000 ? "text-amber-400" : "text-neutral-200"}`}
                       >
                         {formatCountdown(msLeft)}
                       </span>
@@ -439,7 +463,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                   <div className="h-1 w-full overflow-hidden rounded bg-neutral-700">
                     <div
                       className={`h-full transition-all duration-1000 ${
-                        msLeft < 30_000 ? 'bg-amber-500' : 'bg-blue-500'
+                        msLeft < 30_000 ? "bg-amber-500" : "bg-blue-500"
                       }`}
                       style={{ width: `${ttlRatio * 100}%` }}
                     />
@@ -451,7 +475,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                       onClick={handleCopyCode}
                       className="rounded border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-neutral-100"
                     >
-                      {codeCopied ? 'Skopiowano ✓' : 'Kopiuj kod'}
+                      {codeCopied ? "Skopiowano ✓" : "Kopiuj kod"}
                     </button>
                     <button
                       type="button"
@@ -469,7 +493,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                   disabled={codeBusy}
                   className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {codeBusy ? '…' : 'Generuj kod'}
+                  {codeBusy ? "…" : "Generuj kod"}
                 </button>
               )}
             </section>
@@ -492,7 +516,29 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                 disabled={deleteBusy}
                 className="px-3 py-1.5 text-xs bg-red-700 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {deleteBusy ? '…' : 'Usuń workspace'}
+                {deleteBusy ? "…" : "Usuń workspace"}
+              </button>
+            </section>
+          )}
+
+          {/* ---- Leave workspace (member only) ---- */}
+          {canLeaveWorkspace && (
+            <section className="pt-2 border-t border-neutral-700">
+              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
+                Workspace
+              </h3>
+              {leaveError && (
+                <p className="text-red-400 text-xs mb-2" role="alert">
+                  {leaveError}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleLeaveWorkspace}
+                disabled={leaveBusy}
+                className="px-3 py-1.5 text-xs bg-red-700 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {leaveBusy ? "…" : "Opuść workspace"}
               </button>
             </section>
           )}
