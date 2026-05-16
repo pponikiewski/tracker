@@ -63,16 +63,18 @@ async function applyAuthState(state: AuthState, prevState: AuthState | null): Pr
   const serial = ++authTransitionSerial;
 
   if (state.kind === "authed") {
+    // Signal initializing synchronously (before any await) so the first React
+    // render after auth resolves sees isInitialPull=true and keeps the loading
+    // screen — prevents premature WorkspaceEmptyState flash when workspace init
+    // completes before the pull has a chance to start.
+    useAuthStore.getState().setSyncStatus({ kind: "initial-pull" });
+
     const userId = state.user.id;
     const isFirstAuthed = prevState?.kind !== "authed";
     const switched = await handleUserChange(userId);
     if (serial !== authTransitionSerial) return;
     const pull = await import("@/lib/sync/pull");
     const shouldRunInitialPull = (isFirstAuthed || switched) && !pull.hasRunInitialPull(userId);
-
-    if (shouldRunInitialPull) {
-      useAuthStore.getState().setSyncStatus({ kind: "initial-pull" });
-    }
 
     await useWorkspaceStore.getState().init(userId);
     if (serial !== authTransitionSerial) return;
@@ -87,6 +89,8 @@ async function applyAuthState(state: AuthState, prevState: AuthState | null): Pr
         });
       }
       if (serial !== authTransitionSerial) return;
+    } else {
+      useAuthStore.getState().setSyncStatus({ kind: "idle" });
     }
 
     if (isFirstAuthed || switched) {
