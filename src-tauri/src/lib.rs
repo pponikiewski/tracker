@@ -4,7 +4,11 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     Row, SqlitePool,
 };
-use std::{path::PathBuf, str::FromStr, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Deserialize)]
@@ -130,6 +134,14 @@ struct MoveResourceInput {
     user_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportTextFileInput {
+    filename: String,
+    content: String,
+    include_bom: bool,
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct WorkspaceRow {
     id: String,
@@ -216,6 +228,78 @@ fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data.join("tracker.db"))
 }
 
+fn sanitize_export_filename(filename: &str) -> Result<String, String> {
+    let sanitized = filename
+        .trim()
+        .chars()
+        .map(|ch| {
+            let invalid = ch.is_control()
+                || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*');
+            if invalid {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .collect::<String>();
+    let sanitized = sanitized.trim_matches([' ', '.']).to_string();
+
+    if sanitized.is_empty() || sanitized == "." || sanitized == ".." {
+        return Err("filename required".into());
+    }
+
+    Ok(sanitized)
+}
+
+fn unique_export_path(dir: &Path, filename: &str) -> PathBuf {
+    let initial = dir.join(filename);
+    if !initial.exists() {
+        return initial;
+    }
+
+    let path = Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("export");
+    let extension = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|ext| format!(".{ext}"))
+        .unwrap_or_default();
+
+    for index in 1..1000 {
+        let candidate = dir.join(format!("{stem} ({index}){extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    initial
+}
+
+#[tauri::command]
+fn export_text_file(app: AppHandle, input: ExportTextFileInput) -> Result<String, String> {
+    let filename = sanitize_export_filename(&input.filename)?;
+    let export_dir = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().document_dir())
+        .or_else(|_| app.path().app_data_dir())
+        .map_err(|e| e.to_string())?;
+
+    std::fs::create_dir_all(&export_dir).map_err(|e| e.to_string())?;
+    let path = unique_export_path(&export_dir, &filename);
+
+    let mut bytes = Vec::with_capacity(input.content.len() + 3);
+    if input.include_bom {
+        bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
+    }
+    bytes.extend_from_slice(input.content.as_bytes());
+
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
 
 fn validate_name(name: &str) -> Result<String, String> {
     let trimmed = name.trim();
@@ -1490,7 +1574,8 @@ pub fn run() {
             create_event_tx,
             update_event_tx,
             delete_event_tx,
-            move_resource_tx
+            move_resource_tx,
+            export_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -14,7 +14,7 @@ import { formatMinutes } from "@/lib/utils/time";
 import { todayIso } from "@/lib/utils/time";
 import { daysAgoIso } from "@/lib/analytics/aggregate";
 import { downloadCsv, downloadText } from "@/lib/utils/csv";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, FileDown, FileText } from "lucide-react";
 import { ContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { useAuthStore } from "@/store/auth";
 import type { WorkspaceMembership } from "@/lib/db/types";
@@ -255,6 +255,9 @@ export function TeamView() {
   const [rows, setRows] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"csv" | "markdown" | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [roleBusyUserId, setRoleBusyUserId] = useState<string | null>(null);
   const [roleMenu, setRoleMenu] = useState<{
     x: number;
@@ -320,20 +323,44 @@ export function TeamView() {
     [rows, getProfile],
   );
 
-  const exportCsv = () => {
-    if (rows.length === 0) return;
-    downloadCsv(
-      `tracker-team-${dateRange.from}_to_${dateRange.to}.csv`,
-      teamRowsToCsv(rows, reportProfiles),
-    );
+  const setExportSuccess = (path: string | null) => {
+    setExportMessage(path ? `Zapisano: ${path}` : "Eksport rozpoczęty.");
   };
 
-  const exportMarkdown = () => {
+  const exportCsv = async () => {
     if (rows.length === 0) return;
-    downloadText(
-      `tracker-team-${dateRange.from}_to_${dateRange.to}.md`,
-      teamRowsToMarkdown(rows, reportProfiles, dateRange),
-    );
+    setExporting("csv");
+    setExportError(null);
+    setExportMessage(null);
+    try {
+      const path = await downloadCsv(
+        `Tracker_zespoły_${dateRange.from}_to_${dateRange.to}.csv`,
+        teamRowsToCsv(rows, reportProfiles),
+      );
+      setExportSuccess(path);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Nie udało się wyeksportować CSV.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const exportMarkdown = async () => {
+    if (rows.length === 0) return;
+    setExporting("markdown");
+    setExportError(null);
+    setExportMessage(null);
+    try {
+      const path = await downloadText(
+        `Tracker_zespoły_${dateRange.from}_to_${dateRange.to}.md`,
+        teamRowsToMarkdown(rows, reportProfiles, dateRange),
+      );
+      setExportSuccess(path);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Nie udało się wyeksportować Markdown.");
+    } finally {
+      setExporting(null);
+    }
   };
 
   const handleMemberContextMenu = useCallback(
@@ -427,18 +454,20 @@ export function TeamView() {
           <div className="ml-auto flex gap-1">
             <button
               type="button"
-              onClick={exportCsv}
-              disabled={rows.length === 0}
-              className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
+              onClick={() => void exportCsv()}
+              disabled={rows.length === 0 || exporting !== null}
+              className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
             >
+              <FileDown size={14} aria-hidden="true" />
               CSV
             </button>
             <button
               type="button"
-              onClick={exportMarkdown}
-              disabled={rows.length === 0}
-              className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
+              onClick={() => void exportMarkdown()}
+              disabled={rows.length === 0 || exporting !== null}
+              className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
             >
+              <FileText size={14} aria-hidden="true" />
               Markdown
             </button>
           </div>
@@ -449,6 +478,16 @@ export function TeamView() {
       {error && (
         <div className="border-b border-red-900 bg-red-950 px-4 py-2 text-xs text-red-300 shrink-0">
           {error}
+        </div>
+      )}
+      {exportError && (
+        <div className="shrink-0 border-b border-red-900 bg-red-950 px-4 py-2 text-xs text-red-300">
+          {exportError}
+        </div>
+      )}
+      {exportMessage && (
+        <div className="shrink-0 break-all border-b border-emerald-900 bg-emerald-950 px-4 py-2 text-xs text-emerald-300">
+          {exportMessage}
         </div>
       )}
 

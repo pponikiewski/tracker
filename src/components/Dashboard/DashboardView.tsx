@@ -11,10 +11,11 @@ import {
 } from "@/lib/analytics/aggregate";
 import { todayIso } from "@/lib/utils/time";
 import { useEventsRange } from "@/lib/hooks/useEventsRange";
-import { downloadCsv, eventsToCsv } from "@/lib/utils/csv";
+import { downloadCsv, downloadText, eventsToCsv, eventsToMarkdown } from "@/lib/utils/csv";
 import { StatsCard } from "./StatsCard";
 import { ProjectsPieChart } from "./ProjectsPieChart";
 import { DailyBarChart } from "./DailyBarChart";
+import { FileDown, FileText } from "lucide-react";
 
 const RANGE_PRESETS: { label: string; days: number }[] = [
   { label: "7d", days: 6 },
@@ -29,6 +30,9 @@ export function DashboardView() {
   const [toIso, setToIso] = useState(() => todayIso());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drillResourceId, setDrillResourceId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"csv" | "markdown" | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const { events, loading, error } = useEventsRange(fromIso, toIso);
 
   // Make sure resources are loaded once.
@@ -93,10 +97,44 @@ export function DashboardView() {
   };
   const clearSelection = () => setSelected(new Set());
 
-  const handleExportCsv = () => {
+  const setExportSuccess = (path: string | null) => {
+    setExportMessage(path ? `Zapisano: ${path}` : "Eksport rozpoczęty.");
+  };
+
+  const handleExportCsv = async () => {
     if (selectedEvents.length === 0) return;
-    const csv = eventsToCsv(selectedEvents);
-    downloadCsv(`tracker-${fromIso}_to_${toIso}.csv`, csv);
+    setExporting("csv");
+    setExportError(null);
+    setExportMessage(null);
+    try {
+      const path = await downloadCsv(
+        `Tracker_raporty_${fromIso}_to_${toIso}.csv`,
+        eventsToCsv(selectedEvents),
+      );
+      setExportSuccess(path);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Nie udało się wyeksportować CSV.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportMarkdown = async () => {
+    if (selectedEvents.length === 0) return;
+    setExporting("markdown");
+    setExportError(null);
+    setExportMessage(null);
+    try {
+      const path = await downloadText(
+        `Tracker_raporty_${fromIso}_to_${toIso}.md`,
+        eventsToMarkdown(selectedEvents, { from: fromIso, to: toIso }),
+      );
+      setExportSuccess(path);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Nie udało się wyeksportować Markdown.");
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -133,15 +171,28 @@ export function DashboardView() {
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={selectedEvents.length === 0}
-            className="ml-auto rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
-            title="Eksport widocznych eventów do CSV"
-          >
-            Eksport CSV
-          </button>
+          <div className="ml-auto flex gap-1">
+            <button
+              type="button"
+              onClick={() => void handleExportCsv()}
+              disabled={selectedEvents.length === 0 || exporting !== null}
+              className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
+              title="Eksport widocznych eventów do CSV"
+            >
+              <FileDown size={14} aria-hidden="true" />
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportMarkdown()}
+              disabled={selectedEvents.length === 0 || exporting !== null}
+              className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
+              title="Eksport widocznych eventów do Markdown"
+            >
+              <FileText size={14} aria-hidden="true" />
+              Markdown
+            </button>
+          </div>
         </div>
 
         {projects.length > 0 && (
@@ -188,6 +239,16 @@ export function DashboardView() {
       {error && (
         <div className="border-b border-red-900 bg-red-950 px-4 py-2 text-xs text-red-300">
           {error}
+        </div>
+      )}
+      {exportError && (
+        <div className="border-b border-red-900 bg-red-950 px-4 py-2 text-xs text-red-300">
+          {exportError}
+        </div>
+      )}
+      {exportMessage && (
+        <div className="break-all border-b border-emerald-900 bg-emerald-950 px-4 py-2 text-xs text-emerald-300">
+          {exportMessage}
         </div>
       )}
 

@@ -249,6 +249,10 @@ function escapeCsv(value: string): string {
   return needsQuote ? `"${escaped}"` : escaped;
 }
 
+function escapeMarkdownCell(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
+}
+
 export function teamRowsToCsv(rows: MemberRow[], profiles: TeamReportProfile[]): string {
   const lines = ["member,project,minutes,hours"];
 
@@ -287,7 +291,7 @@ export function teamRowsToMarkdown(
   ];
 
   for (const row of rows) {
-    const name = memberName(row.userId, profiles);
+    const name = escapeMarkdownCell(memberName(row.userId, profiles));
     if (row.projectBreakdown.length === 0) {
       lines.push(`| ${name} | - | 0 | 0.00 |`);
       continue;
@@ -295,7 +299,7 @@ export function teamRowsToMarkdown(
 
     for (const project of row.projectBreakdown) {
       lines.push(
-        `| ${name} | ${project.resourceName} | ${project.minutes} | ${formatHours(project.minutes)} |`,
+        `| ${name} | ${escapeMarkdownCell(project.resourceName)} | ${project.minutes} | ${formatHours(project.minutes)} |`,
       );
     }
   }
