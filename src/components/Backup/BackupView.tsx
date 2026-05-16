@@ -4,8 +4,10 @@ import {
   CheckCircle2,
   Database,
   Download,
+  Menu as MenuIcon,
   RefreshCcw,
   ShieldCheck,
+  Trash2,
   Upload,
   Wrench,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import {
   repairLocalData,
   restoreBackupFromText,
   runLocalAudit,
+  wipeLocalDatabase,
 } from "@/lib/backup/backupService";
 import type { AuditIssue, AuditReport, AuditSeverity } from "@/lib/backup/backupFormat";
 import { countPendingForUser } from "@/lib/sync/outbox";
@@ -24,7 +27,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { useAssignmentStore } from "@/store/assignments";
 import { useProfileStore } from "@/store/profile";
 
-type BusyState = "export" | "restore" | "audit" | "repair" | null;
+type BusyState = "export" | "restore" | "audit" | "repair" | "wipe" | null;
 
 function severityClass(severity: AuditSeverity): string {
   switch (severity) {
@@ -82,6 +85,26 @@ export function BackupView() {
   const [audit, setAudit] = useState<AuditReport | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
   const authState = useAuthStore((s) => s.state);
   const setPendingCount = useAuthStore((s) => s.setPendingCount);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
@@ -203,6 +226,33 @@ export function BackupView() {
     }
   };
 
+  const onWipe = async () => {
+    const ok = window.confirm(
+      "UWAGA: skasowanie lokalnej bazy usunie wszystkie lokalne workspace, zasoby, eventy, outbox i cache. " +
+        "Po restarcie aplikacji dane zostaną pobrane na nowo z chmury. " +
+        "Niezsynchronizowane zmiany z outbox ZGINĄ. Kontynuować?",
+    );
+    if (!ok) return;
+    setBusy("wipe");
+    setError(null);
+    setMessage(null);
+    try {
+      await wipeLocalDatabase();
+      setMessage("Lokalna baza wyczyszczona. Restart aplikacji...");
+      try {
+        const { relaunch } = await import("@tauri-apps/plugin-process");
+        await relaunch();
+      } catch {
+        window.location.reload();
+      }
+    } catch (wipeError) {
+      setError(
+        wipeError instanceof Error ? wipeError.message : "Nie udało się wyczyścić lokalnej bazy.",
+      );
+      setBusy(null);
+    }
+  };
+
   const hasIssues = (audit?.issues.length ?? 0) > 0;
   const errorCount = issueCount(audit, "error");
   const warningCount = issueCount(audit, "warning");
@@ -219,43 +269,91 @@ export function BackupView() {
             <h1 className="text-lg font-semibold text-neutral-100">Kopia i audyt</h1>
             <p className="text-xs text-neutral-500">Lokalna baza, outbox sync i spójność drzewa.</p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div ref={menuRef} className="relative ml-auto">
             <button
               type="button"
-              onClick={onExport}
+              onClick={() => setMenuOpen((v) => !v)}
               disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              title="Akcje"
+              className="flex items-center gap-1.5 rounded-md border border-neutral-700 p-2 text-neutral-300 transition-colors hover:bg-neutral-900 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Download size={14} aria-hidden="true" />
-              Eksportuj JSON
+              <MenuIcon size={16} aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              onClick={onRestoreClick}
-              disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-md border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Upload size={14} aria-hidden="true" />
-              Przywróć
-            </button>
-            <button
-              type="button"
-              onClick={() => void refreshAudit()}
-              disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-md border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <RefreshCcw size={14} aria-hidden="true" />
-              Audyt
-            </button>
-            <button
-              type="button"
-              onClick={onRepair}
-              disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-md border border-amber-800 px-3 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-950/40 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Wrench size={14} aria-hidden="true" />
-              Napraw
-            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-xl"
+              >
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void onExport();
+                  }}
+                  disabled={isBusy}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Download size={14} aria-hidden="true" />
+                  Eksportuj JSON
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRestoreClick();
+                  }}
+                  disabled={isBusy}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Upload size={14} aria-hidden="true" />
+                  Przywróć
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void refreshAudit();
+                  }}
+                  disabled={isBusy}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCcw size={14} aria-hidden="true" />
+                  Audyt
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void onRepair();
+                  }}
+                  disabled={isBusy}
+                  className="flex w-full items-center gap-2 border-t border-neutral-800 px-3 py-2 text-left text-xs text-amber-200 transition-colors hover:bg-amber-950/30 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Wrench size={14} aria-hidden="true" />
+                  Napraw bezpiecznie
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void onWipe();
+                  }}
+                  disabled={isBusy}
+                  title="Skasuj całą lokalną bazę i pobierz świeży stan z chmury"
+                  className="flex w-full items-center gap-2 border-t border-neutral-800 px-3 py-2 text-left text-xs text-red-300 transition-colors hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                  Reset lokalnej bazy
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <input

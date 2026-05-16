@@ -247,6 +247,16 @@ export async function repairLocalData(currentUserId?: string | null): Promise<{
   };
 }
 
+export async function wipeLocalDatabase(): Promise<void> {
+  const db = await getDb();
+  await db.execute(`PRAGMA foreign_keys = OFF`);
+  try {
+    await clearCurrentData();
+  } finally {
+    await db.execute(`PRAGMA foreign_keys = ON`);
+  }
+}
+
 async function clearCurrentData(): Promise<void> {
   const db = await getDb();
   await db.execute(`DELETE FROM sync_outbox`);
