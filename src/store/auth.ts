@@ -65,6 +65,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({
           state: { kind: 'authed', user: session.user, session },
         });
+        ensureProfile(session.user.id, session.user.email ?? '').catch((err) =>
+          console.warn('[auth] ensureProfile failed on auth state change:', err),
+        );
       } else {
         set({ state: { kind: 'anonymous' } });
       }
@@ -85,8 +88,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   signUp: async (email, password) => {
     if (!supabase) throw new Error('Supabase not configured');
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
+    if (data.user) {
+      ensureProfile(data.user.id, data.user.email ?? email).catch((err) =>
+        console.warn('[auth] ensureProfile failed on signUp:', err),
+      );
+    }
   },
 
   signOut: async () => {
