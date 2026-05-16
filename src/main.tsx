@@ -82,6 +82,7 @@ async function applyAuthState(state: AuthState, prevState: AuthState | null): Pr
     if (shouldRunInitialPull) {
       try {
         await pull.runInitialPull(userId);
+        useAuthStore.getState().setSyncStatus({ kind: "idle" });
       } catch (error) {
         useAuthStore.getState().setSyncStatus({
           kind: "error",
