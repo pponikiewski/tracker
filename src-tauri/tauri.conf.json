@@ -36,7 +36,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU1RTRDNTA2NTU2QTY5QUQKUldTdGFXcFZCc1hrVllaYlNrWGIyUjhZMG5iNlExQXFQem9xb29XRkxQenVYNnZadGYrVHpNL3UK",
-      "endpoints": ["https://github.com/sitka/tracker/releases/latest/download/latest.json"],
+      "endpoints": ["https://github.com/pponikiewski/tracker/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }

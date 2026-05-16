@@ -4,8 +4,8 @@ Final release flow for tracker desktop builds.
 
 ## One-time setup
 
-1. Push this repo to GitHub.
-2. If the GitHub repository is not `sitka/tracker`, update `src-tauri/tauri.conf.json`:
+1. Push this repo to GitHub (`pponikiewski/tracker`).
+2. If you fork to another repo, update the endpoint in `src-tauri/tauri.conf.json`:
 
    ```json
    "https://github.com/<owner>/<repo>/releases/latest/download/latest.json"
