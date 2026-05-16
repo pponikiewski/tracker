@@ -15,6 +15,10 @@ const ActivityLogView = lazy(() =>
   import("./components/Activity/ActivityLogView").then((m) => ({ default: m.ActivityLogView })),
 );
 
+const BackupView = lazy(() =>
+  import("./components/Backup/BackupView").then((m) => ({ default: m.BackupView })),
+);
+
 const TeamView = lazy(() =>
   import("./components/Team/TeamView").then((m) => ({ default: m.TeamView })),
 );
@@ -99,7 +103,10 @@ function App() {
       } else if (e.key === "4") {
         e.preventDefault();
         setTab("activity");
-      } else if (e.key === "5" && showTeamNavItem) {
+      } else if (e.key === "5") {
+        e.preventDefault();
+        setTab("backup");
+      } else if (e.key === "6" && showTeamNavItem) {
         e.preventDefault();
         setTab("team");
       }
@@ -127,11 +134,7 @@ function App() {
     return <AppLoadingScreen />;
   }
 
-  if (
-    hasResolvedInitialWorkspaceState &&
-    !hasAvailableWorkspaces &&
-    activeWorkspaceId === null
-  ) {
+  if (hasResolvedInitialWorkspaceState && !hasAvailableWorkspaces && activeWorkspaceId === null) {
     return <WorkspaceEmptyState />;
   }
 
@@ -160,6 +163,16 @@ function App() {
             }
           >
             <ActivityLogView />
+          </Suspense>
+        ) : tab === "backup" ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+                Ładowanie kopii...
+              </div>
+            }
+          >
+            <BackupView />
           </Suspense>
         ) : tab === "team" ? (
           <Suspense

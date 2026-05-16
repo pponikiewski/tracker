@@ -15,4 +15,4 @@ if not exist "%VCVARS%" (
 )
 
 call "%VCVARS%" >nul 2>nul
-pnpm tauri dev %*
+corepack pnpm@10 tauri dev %*

@@ -1,10 +1,11 @@
-import { BarChart3, FolderTree, History, ScrollText, Users } from "lucide-react";
+import { BarChart3, Database, FolderTree, History, ScrollText, Users } from "lucide-react";
 import { AuthGate } from "@/components/Auth/AuthGate";
 import { SyncStatusBadge } from "@/components/Auth/SyncStatusBadge";
 import { PresenceBar } from "@/components/Presence/PresenceBar";
+import { UpdateStatusBadge } from "@/components/Updater/UpdateStatusBadge";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
 
-export type Tab = "projects" | "dashboard" | "history" | "activity" | "team";
+export type Tab = "projects" | "dashboard" | "history" | "activity" | "backup" | "team";
 
 interface SidebarProps {
   tab: Tab;
@@ -24,7 +25,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "history", label: "Historia", hint: "Ctrl+2", icon: History },
   { id: "dashboard", label: "Raporty", hint: "Ctrl+3", icon: BarChart3 },
   { id: "activity", label: "Logi zdarzeń", hint: "Ctrl+4", icon: ScrollText },
-  { id: "team", label: "Zespół", hint: "Ctrl+5", icon: Users },
+  { id: "backup", label: "Kopia", hint: "Ctrl+5", icon: Database },
+  { id: "team", label: "Zespół", hint: "Ctrl+6", icon: Users },
 ];
 
 export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
@@ -68,6 +70,7 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
 
       <div className="mt-auto flex flex-col gap-2 border-t border-neutral-800 pt-3">
         <PresenceBar />
+        <UpdateStatusBadge />
         <SyncStatusBadge />
         <AuthGate />
       </div>

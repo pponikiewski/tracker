@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "tracker",
   "version": "0.1.0",
-  "identifier": "com.tracker.app",
+  "identifier": "dev.sitka.tracker",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "corepack pnpm@10 dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "corepack pnpm@10 build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -24,6 +24,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -31,5 +32,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU1RTRDNTA2NTU2QTY5QUQKUldTdGFXcFZCc1hrVllaYlNrWGIyUjhZMG5iNlExQXFQem9xb29XRkxQenVYNnZadGYrVHpNL3UK",
+      "endpoints": ["https://github.com/sitka/tracker/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

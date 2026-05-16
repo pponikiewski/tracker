@@ -1545,7 +1545,12 @@ async fn move_resource_tx(pool: tauri::State<'_, SqlitePool>, input: MoveResourc
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
             let path = db_path(app.handle())?;
             let opts = SqliteConnectOptions::from_str(&path.to_string_lossy())
                 .map_err(|e| tauri::Error::Anyhow(e.into()))?

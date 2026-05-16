@@ -8,7 +8,39 @@ Pełna specyfikacja: `C:\Users\sitka\.Codex\plans\specyfikacja-architektoniczna-
 
 ## Current phase
 
-**Faza 6 — Minimum Team Visibility (DONE).** Projekt jest teraz prostym trackerem dla Ciebie i małego zespołu: wspólny workspace, eventy przypisane do autora, widok czasu per osoba, podstawowy Team report i stabilny sync bez pełnego SaaS/realtime.
+**Faza 9 — Build + release (DONE).** Projekt ma gotowy pipeline release: podpisywane artefakty Tauri updatera, instalatory desktop, GitHub Actions CI/release i runbook publikacji.
+
+Kluczowe zmiany Fazy 9:
+
+- **Installer artifacts**: `src-tauri/tauri.conf.json` ma `bundle.createUpdaterArtifacts = true`, więc `pnpm tauri build` generuje instalatory oraz paczki updatera
+- **Auto-updater**: dodane `tauri-plugin-updater` + `tauri-plugin-process`, publiczny klucz updatera, endpoint `latest.json` na GitHub Releases i `installMode = "passive"` dla Windows
+- **Updater UI**: `UpdateStatusBadge` w sidebarze sprawdza aktualizacje w Tauri runtime, pokazuje dostępność wersji i uruchamia `downloadAndInstall()` + relaunch
+- **Signing key**: klucz publiczny jest w configu; prywatny klucz wygenerowano poza repo w `C:\tmp\tracker-updater-v2.key`, a hasło w `C:\tmp\tracker-updater-password.txt` do przeniesienia do GitHub Secrets
+- **CI**: `.github/workflows/ci.yml` uruchamia `typecheck`, `lint`, `test`, `build`
+- **Release workflow**: `.github/workflows/release.yml` buduje Windows/Linux/macOS przez `tauri-apps/tauri-action@v1`, publikuje draft release i `latest.json`
+- **Release runbook**: `docs/release.md` opisuje sekrety, lokalną walidację, tagowanie i publikację draft release
+
+Poprzednia Faza 8 — Offline-first hardening (DONE). Aplikacja ma lokalny backup/restore, audyt spójności SQLite/outbox i prostą naprawę bezpiecznych problemów lokalnych.
+
+Kluczowe zmiany Fazy 8:
+
+- **Backup JSON**: `src/lib/backup/backupService.ts` eksportuje pełny lokalny snapshot SQLite (`workspaces`, memberships, resources, events, assignments, profiles cache, activity log, outbox, `kv_store`) do pliku JSON
+- **Restore JSON**: import kopii przez file input, walidacja formatu `tracker.offline-backup` v1, preflight audit i transakcyjne zastąpienie lokalnych danych
+- **Sync/local audit**: `auditBackupTables()` sprawdza brakujące workspace'y/parenty/resources, workspace mismatch, błędne materialized path, top-level non-project, rozjazd `cached_minutes` i błędy retry w `sync_outbox`
+- **Safe repair**: `repairLocalData()` usuwa osierocone/local-workspace outbox rows i przelicza `cached_minutes` dla wszystkich resources
+- **Backup UI**: nowy widok `Kopia` w sidebarze (`Ctrl+5`) z eksportem, przywracaniem, audytem i naprawą; Team przesunięty na `Ctrl+6`
+- **Testy awarii**: `src/lib/backup/__tests__/backupFormat.test.ts` pokrywa walidację kopii, odrzucenie uszkodzonych minut, bezpieczne nazwy plików, audyt spójności i widoczność błędów outbox
+
+Poprzednia Faza 7 — Realtime + presence (DONE). Zmiany w chmurze (od innych członków zespołu) docierają niemal natychmiast przez Supabase Realtime, zamiast czekać na 30-sekundowy polling. Presence pokazuje kto jest online i co edytuje.
+
+Kluczowe zmiany Fazy 7:
+
+- **Realtime channel**: `src/lib/sync/realtime.ts` — jeden per-user kanał `tracker-sync` subskrybuje `postgres_changes` na syncowanych tabelach
+- **Debounced pull**: zmiana z chmury → debounce 400ms → `runIncrementalPull`
+- **Polling jako fallback**: `pullTimer` w `worker.ts` zwolniony do 120s, a przy rozłączeniu realtime przełącza się na fast-poll
+- **Presence**: `src/store/presence.ts`, `PresenceBar` i badge edycji w `TreeNode`
+
+Poprzednia Faza 6 — Minimum Team Visibility (DONE). Projekt jest prostym trackerem dla Ciebie i małego zespołu: wspólny workspace, eventy przypisane do autora, widok czasu per osoba, podstawowy Team report i stabilny sync.
 
 Kluczowe zmiany Fazy 6:
 
@@ -38,30 +70,30 @@ Poprzednia Faza 5 — Multi-Tenant Schema (DONE). Model multi-tenant oparty na W
 - **Postgres migration**: `supabase/migrations/20260601000001_multi_tenant_schema.sql` — ltree extension, workspaces, workspace_memberships, backfill, workspace_id w resources/events, invites, RLS
 - **Testy PBT**: 8 nowych właściwości (Properties 1–4, 9, 10, 13) — ltree round-trip, pathToLtree correctness, error rejection, workspace name validation, LWW merge dla workspace'ów, timestamp conversion, outbox collapse
 
-**Next: Faza 7 — Realtime + presence** jest świadomie odłożona. Najpierw priorytetem jest używanie przez mały zespół, backup/export i stabilność sync.
+**Next:** brak — roadmap z `AGENTS.md` jest domknięta.
 
 ---
 
 ## Stack
 
-| Warstwa | Technologia | Wersja |
-|---------|-------------|--------|
-| Window/native | Tauri | 2 |
-| UI | React | 19 |
-| Język | TypeScript | 5.8 |
-| Bundler | Vite | 7 |
-| CSS | Tailwind | v4 (via `@tailwindcss/vite`) |
-| Lint | ESLint flat config + typescript-eslint | 9+ |
-| Format | Prettier | 3 |
-| Runtime | Rust | 1.95 |
-| Package manager | pnpm | 10 |
-| Lokalne DB | SQLite (`tauri-plugin-sql`) | sqlx 0.8 |
-| State | Zustand | 5 |
-| Wykresy | Recharts | 3+ |
-| Cloud BaaS | Supabase (`@supabase/supabase-js`) | 2 |
-| Tests | Vitest + fast-check + Testing Library | 4+ |
+| Warstwa         | Technologia                            | Wersja                       |
+| --------------- | -------------------------------------- | ---------------------------- |
+| Window/native   | Tauri                                  | 2                            |
+| UI              | React                                  | 19                           |
+| Język           | TypeScript                             | 5.8                          |
+| Bundler         | Vite                                   | 7                            |
+| CSS             | Tailwind                               | v4 (via `@tailwindcss/vite`) |
+| Lint            | ESLint flat config + typescript-eslint | 9+                           |
+| Format          | Prettier                               | 3                            |
+| Runtime         | Rust                                   | 1.95                         |
+| Package manager | pnpm                                   | 10                           |
+| Lokalne DB      | SQLite (`tauri-plugin-sql`)            | sqlx 0.8                     |
+| State           | Zustand                                | 5                            |
+| Wykresy         | Recharts                               | 3+                           |
+| Cloud BaaS      | Supabase (`@supabase/supabase-js`)     | 2                            |
+| Tests           | Vitest + fast-check + Testing Library  | 4+                           |
 
-Planowane (kolejne fazy): Realtime (Faza 7).
+Planowane (kolejne fazy): brak — roadmap zamknięta.
 
 ---
 
@@ -115,10 +147,12 @@ Dwie opcje:
 **A. Stała naprawa (zalecane):** dodaj VS Build Tools do USER PATH przez `setx` w PowerShell jako admin. Wtedy `pnpm tauri dev` działa z każdego terminala.
 
 **B. Per-session via vcvars64:** przed `pnpm tauri dev` w PowerShell:
+
 ```powershell
 & "C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 # (lub 2022 jeśli masz)
 ```
+
 Łatwiej: helper script `scripts/tauri-dev.cmd` (patrz niżej).
 
 Symptom braku MSVC: `link: extra operand ...` (Git's link.exe).
@@ -148,23 +182,33 @@ tracker/
 └── package.json
 ```
 
-Aktualne (Fazy 1-5):
+Aktualne (Fazy 1-8):
+
 - `src/components/Tree/` — `TreeView`, `TreeNode`
 - `src/components/Dashboard/` — `DashboardView`, `StatsCard`, `ProjectsPieChart`, `DailyBarChart`
+- `src/components/History/` — `HistoryView`
+- `src/components/Sidebar/` — `Sidebar`
 - `src/components/` — `ContextMenu`, `PromptModal`, `ColorPickerModal`, `LogWorkModal`, `ProjectsView`
 - `src/components/Auth/` — `AuthGate`, `AuthModal`, `SyncStatusBadge`, `SyncStatusModal`, `validation.ts`
 - `src/components/Workspace/` — `WorkspaceSwitcher`, `WorkspaceSettingsPanel`, `WorkspaceCreateModal`, `InviteAcceptView`
+- `src/components/Presence/` — `PresenceBar`
+- `src/components/Backup/` — `BackupView` (backup JSON, restore, audyt lokalny, safe repair)
+- `src/components/Updater/` — `UpdateStatusBadge` (sprawdzanie i instalacja update'ów w Tauri runtime)
 - `src/lib/db/` — `schema.ts` (SCHEMA_SQL + SCHEMA_V5_SQL), `types.ts`, `connection.ts` (runPhase5Migration), `queries.ts`, `workspaceQueries.ts`
-- `src/lib/utils/` — `time.ts`, `tree.ts`, `uuid.ts`, `ltree.ts` (pathToLtree, ltreeToPath)
+- `src/lib/utils/` — `time.ts`, `tree.ts`, `uuid.ts`, `ltree.ts` (pathToLtree, ltreeToPath), `history.ts`
 - `src/lib/analytics/aggregate.ts`
+- `src/lib/backup/` — `backupFormat.ts`, `backupService.ts`, testy walidacji/audytu
 - `src/lib/utils/csv.ts`
 - `src/lib/hooks/useEventsRange.ts`
-- `src/lib/sync/` — `merge.ts`, `outbox.ts`, `worker.ts` (workspace entities), `pull.ts` (ensurePersonalWorkspace), `types.ts`
+- `src/lib/sync/` — `merge.ts`, `outbox.ts`, `worker.ts` (workspace entities, realtime lifecycle), `pull.ts` (ensurePersonalWorkspace), `realtime.ts`, `types.ts`
 - `src/lib/supabase.ts`
 - `src/store/projects.ts` — workspace-scoped queries
 - `src/store/auth.ts`
 - `src/store/workspace.ts` — WorkspaceStore (Zustand)
-- `supabase/migrations/` — `20260512000001_init.sql` (Faza 4), `20260601000001_multi_tenant_schema.sql` (Faza 5), `20260615000001_team_features.sql` (Faza 6)
+- `src/store/presence.ts` — PresenceStore (Zustand)
+- `.github/workflows/` — `ci.yml`, `release.yml`
+- `docs/release.md` — release runbook i sekrety updatera
+- `supabase/migrations/` — `20260512000001_init.sql` (Faza 4), `20260601000001_multi_tenant_schema.sql` (Faza 5), `20260615000001_team_features.sql` (Faza 6), `20260701000001_realtime.sql` (Faza 7)
 - `src/test/setup.ts` + `vitest.config.ts`
 
 Plan future folders (kolejne fazy):
@@ -184,6 +228,7 @@ Plan future folders (kolejne fazy):
 ## Commit convention
 
 Conventional Commits. Scope = faza lub moduł:
+
 - `feat(mvp): ...`
 - `feat(dashboard): ...`
 - `feat(cloud): ...`
@@ -199,6 +244,7 @@ Każda faza = jeden commit + update tego pliku (AGENTS.md).
 ## Key invariants
 
 Co MUSI zostać niezmienione przez cały projekt:
+
 1. **Minutes INTEGER** w czasie — nigdy float hours.
 2. **Materialized path / ltree** dla hierarchii — nigdy pure adjacency list.
 3. **Soft delete** preferowany nad hard delete.
@@ -261,8 +307,8 @@ DB plik: `<appDataDir>/tracker.db` (Tauri rozwiązuje per-OS).
 4. **Supabase Auth + single-user cloud sync** ✓ — outbox + LWW merge + RLS + Vitest PBT
 5. **Multi-tenant schema** ✓ — workspaces, ltree, RLS na workspace_id, invites, WorkspaceStore, UI
 6. **Minimum Team Visibility** ✓ — profiles, event author, TeamView, team report CSV/Markdown, assignments pomocnicze
-7. Realtime + presence — odłożone do czasu realnego bólu zespołu
-8. Offline-first hardening — backup/export/restore, sync audit, testy awarii
-9. Build + release — installer, auto-updater, CI
+7. **Realtime + presence** ✓ — Supabase Realtime per-user channel → debounced incremental pull; per-workspace presence channel ("X is editing")
+8. **Offline-first hardening** ✓ — backup/export/restore JSON, sync/local audit, safe repair, testy awarii
+9. **Build + release** ✓ — installer artifacts, signed updater, GitHub Actions CI/release, release runbook
 
 Po każdej fazie: green build, commit, update AGENTS.md.
