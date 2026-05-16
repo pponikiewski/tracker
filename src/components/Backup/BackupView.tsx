@@ -107,7 +107,7 @@ export function BackupView() {
     setBusy("audit");
     setError(null);
     try {
-      setAudit(await runLocalAudit());
+      setAudit(await runLocalAudit(userId));
     } catch (auditError) {
       setError(auditError instanceof Error ? auditError.message : "Nie udało się wykonać audytu.");
     } finally {
@@ -117,7 +117,7 @@ export function BackupView() {
 
   useEffect(() => {
     let cancelled = false;
-    runLocalAudit()
+    runLocalAudit(userId)
       .then((report) => {
         if (!cancelled) setAudit(report);
       })
@@ -131,7 +131,7 @@ export function BackupView() {
     return () => {
       cancelled = true;
     };
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, userId]);
 
   const onExport = async () => {
     setBusy("export");
@@ -140,7 +140,7 @@ export function BackupView() {
     try {
       const path = await exportBackup();
       setMessage(path ? `Zapisano: ${path}` : "Eksport rozpoczęty.");
-      setAudit(await runLocalAudit());
+      setAudit(await runLocalAudit(userId));
     } catch (exportError) {
       setError(
         exportError instanceof Error ? exportError.message : "Nie udało się wyeksportować kopii.",
@@ -184,7 +184,7 @@ export function BackupView() {
     setError(null);
     setMessage(null);
     try {
-      const result = await repairLocalData();
+      const result = await repairLocalData(userId);
       await refreshAppState();
       setAudit(result.audit);
       setMessage(

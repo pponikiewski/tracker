@@ -325,7 +325,11 @@ export function backupFilename(date = new Date()): string {
   return `tracker-backup-${stamp}.json`;
 }
 
-export function auditBackupTables(tables: BackupTables, generatedAt = new Date()): AuditReport {
+export function auditBackupTables(
+  tables: BackupTables,
+  generatedAt = new Date(),
+  currentUserId?: string | null,
+): AuditReport {
   const issues: AuditIssue[] = [];
   const workspaces = new Map(tables.workspaces.map((w) => [w.id, w]));
   const resources = new Map(tables.resources.map((r) => [r.id, r]));
@@ -485,12 +489,31 @@ export function auditBackupTables(tables: BackupTables, generatedAt = new Date()
     }
   }
 
+  const visibleWorkspaceIds = currentUserId
+    ? new Set(
+        tables.workspace_memberships
+          .filter((m) => m.deleted_at === null && m.user_id === currentUserId)
+          .map((m) => m.workspace_id),
+      )
+    : null;
+
+  const summaryWorkspaces = tables.workspaces.filter(
+    (w) => w.deleted_at === null && (visibleWorkspaceIds === null || visibleWorkspaceIds.has(w.id)),
+  );
+  const summaryWorkspaceIds = new Set(summaryWorkspaces.map((w) => w.id));
+  const summaryResources = tables.resources.filter(
+    (r) => r.deleted_at === null && summaryWorkspaceIds.has(r.workspace_id),
+  );
+  const summaryEvents = tables.events.filter(
+    (e) => e.deleted_at === null && summaryWorkspaceIds.has(e.workspace_id),
+  );
+
   return {
     generatedAt: generatedAt.toISOString(),
     summary: {
-      workspaces: tables.workspaces.filter((w) => w.deleted_at === null).length,
-      resources: tables.resources.filter((r) => r.deleted_at === null).length,
-      events: tables.events.filter((e) => e.deleted_at === null).length,
+      workspaces: summaryWorkspaces.length,
+      resources: summaryResources.length,
+      events: summaryEvents.length,
       pendingOutbox: tables.sync_outbox.length,
       syncErrors: tables.sync_outbox.filter((r) => r.last_error !== null).length,
     },

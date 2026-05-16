@@ -23,7 +23,7 @@ import {
   type TrackerBackup,
 } from "./backupFormat";
 
-const APP_VERSION = "0.1.4";
+const APP_VERSION = "0.1.5";
 
 interface RestoreResult {
   audit: AuditReport;
@@ -99,8 +99,8 @@ export async function exportBackup(): Promise<string | null> {
   );
 }
 
-export async function runLocalAudit(): Promise<AuditReport> {
-  return auditBackupTables(await readBackupTables());
+export async function runLocalAudit(currentUserId?: string | null): Promise<AuditReport> {
+  return auditBackupTables(await readBackupTables(), new Date(), currentUserId);
 }
 
 async function deleteLocalWorkspaceOutboxRows(): Promise<number> {
@@ -220,7 +220,7 @@ async function cascadeWorkspaceFromParent(): Promise<number> {
   return totalFixed;
 }
 
-export async function repairLocalData(): Promise<{
+export async function repairLocalData(currentUserId?: string | null): Promise<{
   orphanedOutboxRows: number;
   localWorkspaceOutboxRows: number;
   resourcesRecalculated: number;
@@ -243,7 +243,7 @@ export async function repairLocalData(): Promise<{
     orphanAssignments,
     resourcesMovedToParentWorkspace,
     rootsPromotedToProject,
-    audit: await runLocalAudit(),
+    audit: await runLocalAudit(currentUserId),
   };
 }
 
