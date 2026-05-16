@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode},
-    Connection, Row, SqliteConnection,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
+    Row, SqlitePool,
 };
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, time::Duration};
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Deserialize)]
@@ -216,20 +216,6 @@ fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data.join("tracker.db"))
 }
 
-async fn connect(app: &AppHandle) -> Result<SqliteConnection, String> {
-    let options = SqliteConnectOptions::from_str(&db_path(app)?.to_string_lossy())
-        .map_err(|e| e.to_string())?
-        .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal);
-    let mut conn = SqliteConnection::connect_with(&options)
-        .await
-        .map_err(|e| e.to_string())?;
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&mut conn)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(conn)
-}
 
 fn validate_name(name: &str) -> Result<String, String> {
     let trimmed = name.trim();
@@ -470,10 +456,9 @@ async fn recalc_ancestor_chain(
 }
 
 #[tauri::command]
-async fn create_workspace_tx(app: AppHandle, input: CreateWorkspaceInput) -> Result<(), String> {
+async fn create_workspace_tx(pool: tauri::State<'_, SqlitePool>, input: CreateWorkspaceInput) -> Result<(), String> {
     let name = validate_name(&input.name)?;
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     sqlx::query(
         "INSERT INTO workspaces (id, name, owner_id, created_at, updated_at)
@@ -561,10 +546,9 @@ async fn create_workspace_tx(app: AppHandle, input: CreateWorkspaceInput) -> Res
 }
 
 #[tauri::command]
-async fn create_resource_tx(app: AppHandle, input: CreateResourceInput) -> Result<(), String> {
+async fn create_resource_tx(pool: tauri::State<'_, SqlitePool>, input: CreateResourceInput) -> Result<(), String> {
     let name = validate_name(&input.name)?;
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let path = if let Some(parent_id) = &input.parent_id {
         let parent = fetch_resource(&mut tx, parent_id)
@@ -642,10 +626,9 @@ async fn create_resource_tx(app: AppHandle, input: CreateResourceInput) -> Resul
 }
 
 #[tauri::command]
-async fn rename_resource_tx(app: AppHandle, input: RenameResourceInput) -> Result<(), String> {
+async fn rename_resource_tx(pool: tauri::State<'_, SqlitePool>, input: RenameResourceInput) -> Result<(), String> {
     let name = validate_name(&input.name)?;
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let previous = fetch_resource(&mut tx, &input.id)
         .await?
         .ok_or("Resource not found")?;
@@ -700,9 +683,8 @@ async fn rename_resource_tx(app: AppHandle, input: RenameResourceInput) -> Resul
 }
 
 #[tauri::command]
-async fn set_resource_color_tx(app: AppHandle, input: SetResourceColorInput) -> Result<(), String> {
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+async fn set_resource_color_tx(pool: tauri::State<'_, SqlitePool>, input: SetResourceColorInput) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let previous = fetch_resource(&mut tx, &input.id)
         .await?
         .ok_or("Resource not found")?;
@@ -760,11 +742,10 @@ async fn set_resource_color_tx(app: AppHandle, input: SetResourceColorInput) -> 
 
 #[tauri::command]
 async fn soft_delete_subtree_tx(
-    app: AppHandle,
+    pool: tauri::State<'_, SqlitePool>,
     input: SoftDeleteSubtreeInput,
 ) -> Result<(), String> {
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let root = fetch_resource(&mut tx, &input.id)
         .await?
         .ok_or("Resource not found")?;
@@ -928,11 +909,10 @@ async fn soft_delete_subtree_tx(
 
 #[tauri::command]
 async fn lift_children_and_delete_tx(
-    app: AppHandle,
+    pool: tauri::State<'_, SqlitePool>,
     input: LiftChildrenAndDeleteInput,
 ) -> Result<(), String> {
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let node = match fetch_resource(&mut tx, &input.id).await? {
         Some(node) => node,
         None => {
@@ -1030,11 +1010,10 @@ async fn lift_children_and_delete_tx(
 
 #[tauri::command]
 async fn detach_children_as_projects_tx(
-    app: AppHandle,
+    pool: tauri::State<'_, SqlitePool>,
     input: DetachChildrenAsProjectsInput,
 ) -> Result<(), String> {
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let node = match fetch_resource(&mut tx, &input.id).await? {
         Some(node) => node,
         None => {
@@ -1123,14 +1102,13 @@ async fn detach_children_as_projects_tx(
 }
 
 #[tauri::command]
-async fn create_event_tx(app: AppHandle, input: CreateEventInput) -> Result<(), String> {
+async fn create_event_tx(pool: tauri::State<'_, SqlitePool>, input: CreateEventInput) -> Result<(), String> {
     validate_minutes(input.minutes)?;
     validate_text_field(&input.goal, 512, "goal")?;
     validate_text_field(&input.topics, 512, "topics")?;
     validate_text_field(&input.notes, 8192, "notes")?;
     validate_text_field(&input.report, 8192, "report")?;
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     sqlx::query(
         "INSERT INTO events
@@ -1213,14 +1191,13 @@ async fn create_event_tx(app: AppHandle, input: CreateEventInput) -> Result<(), 
 }
 
 #[tauri::command]
-async fn update_event_tx(app: AppHandle, input: UpdateEventInput) -> Result<(), String> {
+async fn update_event_tx(pool: tauri::State<'_, SqlitePool>, input: UpdateEventInput) -> Result<(), String> {
     validate_minutes(input.minutes)?;
     validate_text_field(&input.goal, 512, "goal")?;
     validate_text_field(&input.topics, 512, "topics")?;
     validate_text_field(&input.notes, 8192, "notes")?;
     validate_text_field(&input.report, 8192, "report")?;
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let previous = fetch_event(&mut tx, &input.id)
         .await?
         .ok_or("Event not found")?;
@@ -1298,9 +1275,8 @@ async fn update_event_tx(app: AppHandle, input: UpdateEventInput) -> Result<(), 
 }
 
 #[tauri::command]
-async fn delete_event_tx(app: AppHandle, input: DeleteEventInput) -> Result<(), String> {
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+async fn delete_event_tx(pool: tauri::State<'_, SqlitePool>, input: DeleteEventInput) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let previous = fetch_event(&mut tx, &input.id)
         .await?
         .ok_or("Event not found")?;
@@ -1367,9 +1343,8 @@ async fn delete_event_tx(app: AppHandle, input: DeleteEventInput) -> Result<(), 
 }
 
 #[tauri::command]
-async fn move_resource_tx(app: AppHandle, input: MoveResourceInput) -> Result<(), String> {
-    let mut conn = connect(&app).await?;
-    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+async fn move_resource_tx(pool: tauri::State<'_, SqlitePool>, input: MoveResourceInput) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let node = fetch_resource(&mut tx, &input.id)
         .await?
         .ok_or("Resource not found")?;
@@ -1486,6 +1461,23 @@ async fn move_resource_tx(app: AppHandle, input: MoveResourceInput) -> Result<()
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            let path = db_path(app.handle())?;
+            let opts = SqliteConnectOptions::from_str(&path.to_string_lossy())
+                .map_err(|e| tauri::Error::Anyhow(e.into()))?
+                .create_if_missing(true)
+                .journal_mode(SqliteJournalMode::Wal)
+                .busy_timeout(Duration::from_secs(5))
+                .pragma("foreign_keys", "ON");
+            let pool = tauri::async_runtime::block_on(
+                SqlitePoolOptions::new()
+                    .max_connections(4)
+                    .connect_with(opts),
+            )
+            .map_err(|e| tauri::Error::Anyhow(e.into()))?;
+            app.manage(pool);
+            Ok(())
+        })
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             create_workspace_tx,
