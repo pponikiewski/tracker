@@ -41,7 +41,7 @@ function App() {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const previousWorkspaceIdRef = useRef<string | null>(null);
   const workspaceLoading = useWorkspaceStore((s) => s.loading);
-  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const hasAvailableWorkspaces = useWorkspaceStore((s) => s.userWorkspaces().length > 0);
   const memberships = useWorkspaceStore((s) => s.memberships);
   const activeMemberCount = memberships.filter((m) => m.workspace_id === activeWorkspaceId).length;
   const showTeamTab = activeMemberCount > 1;
@@ -118,11 +118,10 @@ function App() {
     return <LoginPage />;
   }
 
-  const visibleWorkspaces = workspaces.filter((w) => w.deleted_at === null);
   const isResolvingWorkspace =
     authState.kind === "authed" &&
     ((!hasResolvedInitialWorkspaceState && (workspaceLoading || isInitialPull)) ||
-      (visibleWorkspaces.length > 0 && activeWorkspaceId === null));
+      (hasAvailableWorkspaces && activeWorkspaceId === null));
 
   if (isResolvingWorkspace) {
     return <AppLoadingScreen />;
@@ -130,7 +129,7 @@ function App() {
 
   if (
     hasResolvedInitialWorkspaceState &&
-    visibleWorkspaces.length === 0 &&
+    !hasAvailableWorkspaces &&
     activeWorkspaceId === null
   ) {
     return <WorkspaceEmptyState />;
