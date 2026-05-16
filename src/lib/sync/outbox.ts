@@ -114,6 +114,42 @@ export async function deleteByIds(db: Database, ids: number[]): Promise<void> {
   await db.execute(`DELETE FROM sync_outbox WHERE id IN (${placeholders})`, ids);
 }
 
+/**
+ * Drops sync_outbox entries that can never succeed because their target
+ * workspace was soft-deleted locally (or no longer exists). Without this,
+ * stale activity_log / resource / event rows keep failing RLS forever and
+ * the sync error list never clears. Idempotent.
+ */
+export async function cleanupOrphanedOutboxEntries(db: Database): Promise<number> {
+  const result = await db.execute(
+    `DELETE FROM sync_outbox
+     WHERE id IN (
+       SELECT so.id FROM sync_outbox so
+         LEFT JOIN activity_log al ON so.entity = 'activity_log' AND al.id = so.entity_id
+         LEFT JOIN workspaces w_al ON w_al.id = al.workspace_id
+       WHERE so.entity = 'activity_log'
+         AND (w_al.id IS NULL OR w_al.deleted_at IS NOT NULL)
+     )
+     OR id IN (
+       SELECT so.id FROM sync_outbox so
+         LEFT JOIN resources r ON so.entity = 'resource' AND r.id = so.entity_id
+         LEFT JOIN workspaces w_r ON w_r.id = r.workspace_id
+       WHERE so.entity = 'resource'
+         AND r.id IS NOT NULL
+         AND (w_r.id IS NULL OR w_r.deleted_at IS NOT NULL)
+     )
+     OR id IN (
+       SELECT so.id FROM sync_outbox so
+         LEFT JOIN events e ON so.entity = 'event' AND e.id = so.entity_id
+         LEFT JOIN workspaces w_e ON w_e.id = e.workspace_id
+       WHERE so.entity = 'event'
+         AND e.id IS NOT NULL
+         AND (w_e.id IS NULL OR w_e.deleted_at IS NOT NULL)
+     )`,
+  );
+  return result.rowsAffected ?? 0;
+}
+
 export async function bumpRetry(
   db: Database,
   ids: number[],

@@ -1,7 +1,13 @@
 import { getDb } from "@/lib/db/connection";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth";
-import { listReady, deleteByIds, bumpRetry, countPendingForUser } from "./outbox";
+import {
+  listReady,
+  deleteByIds,
+  bumpRetry,
+  countPendingForUser,
+  cleanupOrphanedOutboxEntries,
+} from "./outbox";
 import { pathToLtree } from "@/lib/utils/ltree";
 import type { Entity } from "./types";
 
@@ -405,6 +411,10 @@ async function tickInternal(options: TickOptions): Promise<void> {
   const db = await getDb();
   const now = Date.now();
   const userId = auth.state.user.id;
+  const cleaned = await cleanupOrphanedOutboxEntries(db);
+  if (cleaned > 0) {
+    console.warn(`[sync] removed ${cleaned} orphaned outbox row(s) for deleted workspaces`);
+  }
   const rows = (await listReady(db, now, 50, userId)) as ReadyRow[];
   if (rows.length === 0) {
     auth.setPendingCount(await countPendingForUser(db, userId));
