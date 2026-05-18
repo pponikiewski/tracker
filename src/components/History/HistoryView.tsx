@@ -116,7 +116,6 @@ export function HistoryView() {
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       <header className="shrink-0 border-b border-neutral-800 px-4 py-3 space-y-2">
-        <div className="mx-auto w-full max-w-4xl space-y-2">
         <div className="flex items-baseline justify-between gap-2 min-w-0">
           <h1 className="text-lg font-semibold tracking-tight text-neutral-100 shrink-0">Historia</h1>
           <p className="text-xs text-neutral-500 truncate">
@@ -124,11 +123,11 @@ export function HistoryView() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <select
             value={personFilter}
             onChange={(e) => setPersonFilter(e.target.value as PersonFilter)}
-            className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
+            className="w-28 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500 sm:w-36"
             aria-label="Filtr osoby"
           >
             <option value="all">Wszyscy</option>
@@ -141,6 +140,11 @@ export function HistoryView() {
               );
             })}
           </select>
+          <DateRangePicker
+            from={fromIso}
+            to={toIso}
+            onChange={(f, t) => { setFromIso(f); setToIso(t); }}
+          />
           <div className="flex shrink-0 gap-1">
             {RANGE_PRESETS.map((preset) => {
               const active = fromIso === daysAgoIso(preset.days) && toIso === todayIso();
@@ -163,13 +167,6 @@ export function HistoryView() {
               );
             })}
           </div>
-        </div>
-
-        <DateRangePicker
-          from={fromIso}
-          to={toIso}
-          onChange={(f, t) => { setFromIso(f); setToIso(t); }}
-        />
         </div>
       </header>
 

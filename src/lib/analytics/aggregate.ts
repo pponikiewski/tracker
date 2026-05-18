@@ -29,6 +29,7 @@ export interface ResourceTimeStat {
   minutes: number;
   hasChildren: boolean;
   isDirect: boolean;
+  resourceType: string;
 }
 
 export interface ResourceBreakdown {
@@ -153,6 +154,7 @@ export function aggregateResourceBreakdown(
       minutes: minutesInSubtree(events, resource.path),
       hasChildren: (childCount.get(resource.id) ?? 0) > 0,
       isDirect: false,
+      resourceType: resource.type,
     }))
     .filter((item) => item.minutes > 0);
 
@@ -173,6 +175,7 @@ export function aggregateResourceBreakdown(
             minutes: directMinutes,
             hasChildren: false,
             isDirect: true,
+            resourceType: current.type,
           },
         ]
       : [];

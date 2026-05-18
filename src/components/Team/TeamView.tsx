@@ -15,6 +15,7 @@ import { todayIso } from "@/lib/utils/time";
 import { daysAgoIso } from "@/lib/analytics/aggregate";
 import { downloadCsv, downloadText } from "@/lib/utils/csv";
 import { ChevronRight, FileDown, FileText } from "lucide-react";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { ContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { useAuthStore } from "@/store/auth";
 import type { WorkspaceMembership } from "@/lib/db/types";
@@ -411,54 +412,17 @@ export function TeamView() {
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       {/* Header with date range selector */}
-      <header className="border-b border-neutral-800 px-4 py-3 shrink-0">
-        <h1 className="mb-3 text-lg font-semibold tracking-tight text-neutral-100">Zespół</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wide text-neutral-500">Zakres:</span>
-
-          {/* Preset buttons */}
-          <div className="flex gap-1">
-            <PresetButton active={preset === "today"} onClick={() => setPreset("today")}>
-              Dziś
-            </PresetButton>
-            <PresetButton active={preset === "week"} onClick={() => setPreset("week")}>
-              Ten tydzień
-            </PresetButton>
-            <PresetButton active={preset === "month"} onClick={() => setPreset("month")}>
-              Ten miesiąc
-            </PresetButton>
-            <PresetButton active={preset === "custom"} onClick={() => setPreset("custom")}>
-              Własny zakres
-            </PresetButton>
-          </div>
-
-          {/* Custom date inputs — shown when Custom Range is selected */}
-          {preset === "custom" && (
-            <>
-              <input
-                type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
-              />
-              <span className="text-neutral-600">→</span>
-              <input
-                type="date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-                className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
-              />
-            </>
-          )}
-
-          <div className="ml-auto flex gap-1">
+      <header className="border-b border-neutral-800 px-4 py-3 shrink-0 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg font-semibold tracking-tight text-neutral-100 shrink-0">Zespół</h1>
+          <div className="flex shrink-0 gap-1">
             <button
               type="button"
               onClick={() => void exportCsv()}
               disabled={rows.length === 0 || exporting !== null}
               className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
             >
-              <FileDown size={14} aria-hidden="true" />
+              <FileDown size={13} aria-hidden="true" />
               CSV
             </button>
             <button
@@ -467,10 +431,26 @@ export function TeamView() {
               disabled={rows.length === 0 || exporting !== null}
               className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
             >
-              <FileText size={14} aria-hidden="true" />
-              Markdown
+              <FileText size={13} aria-hidden="true" />
+              Md
             </button>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <div className="flex shrink-0 flex-wrap gap-1">
+            <PresetButton active={preset === "today"} onClick={() => setPreset("today")}>Dziś</PresetButton>
+            <PresetButton active={preset === "week"} onClick={() => setPreset("week")}>Tydzień</PresetButton>
+            <PresetButton active={preset === "month"} onClick={() => setPreset("month")}>Miesiąc</PresetButton>
+            <PresetButton active={preset === "custom"} onClick={() => setPreset("custom")}>Własny</PresetButton>
+          </div>
+          {preset === "custom" && (
+            <DateRangePicker
+              from={customFrom}
+              to={customTo}
+              onChange={(f, t) => { setCustomFrom(f); setCustomTo(t); }}
+            />
+          )}
         </div>
       </header>
 

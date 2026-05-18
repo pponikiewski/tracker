@@ -4,6 +4,13 @@ import type { ResourceTimeStat } from "@/lib/analytics/aggregate";
 import type { Resource } from "@/lib/db/types";
 import { formatMinutes } from "@/lib/utils/time";
 
+const typeLabels: Record<string, string> = {
+  project: "projekt",
+  stage: "etap",
+  substage: "podetap",
+  task: "zadanie",
+};
+
 interface Props {
   data: ResourceTimeStat[];
   current: Resource | null;
@@ -122,7 +129,12 @@ export function ProjectsPieChart({ data, current, ancestors, onNavigate }: Props
                   borderRadius: 6,
                   fontSize: 12,
                 }}
-                formatter={(value, name) => [formatMinutes(Number(value)), String(name)]}
+                formatter={(value, _name, props) => {
+                  const d = props.payload as ResourceTimeStat | undefined;
+                  const typeLabel = d ? typeLabels[d.resourceType] ?? d.resourceType : "";
+                  const label = d ? `${d.name}${typeLabel ? ` (${typeLabel})` : ""}` : String(_name);
+                  return [formatMinutes(Number(value)), label];
+                }}
               />
             </PieChart>
           </ResponsiveContainer>
