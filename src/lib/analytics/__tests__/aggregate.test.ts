@@ -114,6 +114,7 @@ describe("aggregateResourceBreakdown", () => {
         minutes: 10,
         hasChildren: false,
         isDirect: true,
+        resourceType: "project",
       },
       {
         id: "s1",
@@ -123,6 +124,7 @@ describe("aggregateResourceBreakdown", () => {
         minutes: 40,
         hasChildren: true,
         isDirect: false,
+        resourceType: "stage",
       },
       {
         id: "t2",
@@ -132,6 +134,7 @@ describe("aggregateResourceBreakdown", () => {
         minutes: 20,
         hasChildren: false,
         isDirect: false,
+        resourceType: "task",
       },
     ]);
   });
