@@ -365,35 +365,35 @@ export function BackupView() {
         />
       </header>
 
-      <section className="grid grid-cols-5 gap-px border-b border-neutral-800 bg-neutral-800">
-        <div className="bg-neutral-950 px-6 py-4">
-          <span className="block text-[11px] uppercase text-neutral-500">Workspace</span>
-          <span className="mt-1 block text-xl font-semibold text-neutral-100">
-            {audit?.summary.workspaces ?? "-"}
+      <section className="grid grid-cols-2 gap-px border-b border-neutral-800 bg-neutral-800 md:grid-cols-5">
+        <div className="bg-neutral-950 px-4 py-3">
+          <span className="block text-[10px] uppercase tracking-wide text-neutral-500">Workspace</span>
+          <span className="mt-1 block text-2xl font-semibold tabular-nums text-neutral-100">
+            {audit?.summary.workspaces ?? "—"}
           </span>
         </div>
-        <div className="bg-neutral-950 px-6 py-4">
-          <span className="block text-[11px] uppercase text-neutral-500">Zasoby</span>
-          <span className="mt-1 block text-xl font-semibold text-neutral-100">
-            {audit?.summary.resources ?? "-"}
+        <div className="bg-neutral-950 px-4 py-3">
+          <span className="block text-[10px] uppercase tracking-wide text-neutral-500">Zasoby</span>
+          <span className="mt-1 block text-2xl font-semibold tabular-nums text-neutral-100">
+            {audit?.summary.resources ?? "—"}
           </span>
         </div>
-        <div className="bg-neutral-950 px-6 py-4">
-          <span className="block text-[11px] uppercase text-neutral-500">Wpisy czasu</span>
-          <span className="mt-1 block text-xl font-semibold text-neutral-100">
-            {audit?.summary.events ?? "-"}
+        <div className="bg-neutral-950 px-4 py-3">
+          <span className="block text-[10px] uppercase tracking-wide text-neutral-500">Wpisy czasu</span>
+          <span className="mt-1 block text-2xl font-semibold tabular-nums text-neutral-100">
+            {audit?.summary.events ?? "—"}
           </span>
         </div>
-        <div className="bg-neutral-950 px-6 py-4">
-          <span className="block text-[11px] uppercase text-neutral-500">Outbox</span>
-          <span className="mt-1 block text-xl font-semibold text-neutral-100">
-            {audit?.summary.pendingOutbox ?? "-"}
+        <div className="bg-neutral-950 px-4 py-3">
+          <span className="block text-[10px] uppercase tracking-wide text-neutral-500">Outbox</span>
+          <span className="mt-1 block text-2xl font-semibold tabular-nums text-neutral-100">
+            {audit?.summary.pendingOutbox ?? "—"}
           </span>
         </div>
-        <div className="bg-neutral-950 px-6 py-4">
-          <span className="block text-[11px] uppercase text-neutral-500">Problemy</span>
+        <div className="col-span-2 bg-neutral-950 px-4 py-3 md:col-span-1">
+          <span className="block text-[10px] uppercase tracking-wide text-neutral-500">Problemy</span>
           <span
-            className={`mt-1 block text-xl font-semibold ${
+            className={`mt-1 block text-2xl font-semibold tabular-nums ${
               errorCount > 0
                 ? "text-red-300"
                 : warningCount > 0
@@ -401,7 +401,7 @@ export function BackupView() {
                   : "text-emerald-300"
             }`}
           >
-            {audit ? audit.issues.length : "-"}
+            {audit ? audit.issues.length : "—"}
           </span>
         </div>
       </section>

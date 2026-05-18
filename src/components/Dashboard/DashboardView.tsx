@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { useProjects } from "@/store/projects";
 import {
   aggregate,
@@ -139,39 +140,10 @@ export function DashboardView() {
 
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
-      <header className="border-b border-neutral-800 px-4 py-3">
-        <h1 className="mb-3 text-lg font-semibold tracking-tight text-neutral-100">Raporty</h1>
-        <div className="mb-3 flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wide text-neutral-500">Zakres:</span>
-          <input
-            type="date"
-            value={fromIso}
-            onChange={(e) => setFromIso(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
-          />
-          <span className="text-neutral-600">→</span>
-          <input
-            type="date"
-            value={toIso}
-            onChange={(e) => setToIso(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
-          />
-          <div className="ml-2 flex gap-1">
-            {RANGE_PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => {
-                  setFromIso(daysAgoIso(p.days));
-                  setToIso(todayIso());
-                }}
-                className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <div className="ml-auto flex gap-1">
+      <header className="border-b border-neutral-800 px-4 py-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg font-semibold tracking-tight text-neutral-100 shrink-0">Raporty</h1>
+          <div className="flex shrink-0 gap-1">
             <button
               type="button"
               onClick={() => void handleExportCsv()}
@@ -179,7 +151,7 @@ export function DashboardView() {
               className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
               title="Eksport widocznych eventów do CSV"
             >
-              <FileDown size={14} aria-hidden="true" />
+              <FileDown size={13} aria-hidden="true" />
               CSV
             </button>
             <button
@@ -189,9 +161,36 @@ export function DashboardView() {
               className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
               title="Eksport widocznych eventów do Markdown"
             >
-              <FileText size={14} aria-hidden="true" />
-              Markdown
+              <FileText size={13} aria-hidden="true" />
+              Md
             </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 min-w-0">
+          <DateRangePicker
+            from={fromIso}
+            to={toIso}
+            onChange={(f, t) => { setFromIso(f); setToIso(t); }}
+          />
+          <div className="flex shrink-0 gap-1">
+            {RANGE_PRESETS.map((p) => {
+              const active = fromIso === daysAgoIso(p.days) && toIso === todayIso();
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => { setFromIso(daysAgoIso(p.days)); setToIso(todayIso()); }}
+                  className={`rounded border px-2 py-1 text-[11px] transition-colors ${
+                    active
+                      ? "border-blue-500 bg-blue-600/20 text-blue-300"
+                      : "border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -253,7 +252,7 @@ export function DashboardView() {
       )}
 
       <main className="flex-1 overflow-auto p-4">
-        <div className="mb-4 grid grid-cols-4 gap-3">
+        <div className="mb-4 grid grid-cols-2 gap-3">
           <StatsCard label="Dzisiaj" minutes={minutesIn(todayStr, todayStr)} />
           <StatsCard label="Ten tydzień" minutes={minutesIn(weekFrom, todayStr)} hint="7 dni" />
           <StatsCard label="Ten miesiąc" minutes={minutesIn(monthFrom, todayStr)} hint="30 dni" />
@@ -264,7 +263,7 @@ export function DashboardView() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <ProjectsPieChart
             data={resourceBreakdown.items}
             current={resourceBreakdown.current}

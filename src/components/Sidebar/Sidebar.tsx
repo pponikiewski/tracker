@@ -1,4 +1,4 @@
-import { BarChart3, Database, FolderTree, History, ScrollText, Users } from "lucide-react";
+import { BarChart3, FolderTree, History, ScrollText, Users } from "lucide-react";
 import { AuthGate } from "@/components/Auth/AuthGate";
 import { PresenceBar } from "@/components/Presence/PresenceBar";
 import { WorkspaceSwitcher } from "@/components/Workspace/WorkspaceSwitcher";
@@ -24,12 +24,12 @@ const NAV_ITEMS: NavItem[] = [
   { id: "history", label: "Historia", hint: "Ctrl+2", icon: History },
   { id: "dashboard", label: "Raporty", hint: "Ctrl+3", icon: BarChart3 },
   { id: "activity", label: "Logi zdarzeń", hint: "Ctrl+4", icon: ScrollText },
-  { id: "backup", label: "Kopia", hint: "Ctrl+5", icon: Database },
-  { id: "team", label: "Zespół", hint: "Ctrl+6", icon: Users },
+  { id: "team", label: "Zespół", hint: "Ctrl+5", icon: Users },
 ];
 
 export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
   const items = NAV_ITEMS.filter((item) => item.id !== "team" || showTeamTab);
+
 
   return (
     <aside className="flex w-48 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950 px-3 py-4">
@@ -71,7 +71,7 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
 
       <div className="mt-auto flex flex-col gap-2 border-t border-neutral-800 pt-3">
         <PresenceBar />
-        <AuthGate />
+        <AuthGate onTabChange={onTabChange} />
       </div>
     </aside>
   );

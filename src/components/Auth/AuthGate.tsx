@@ -1,4 +1,4 @@
-import { LogOut, User } from 'lucide-react';
+import { Database, LogOut, User } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { AuthModal } from './AuthModal';
@@ -6,14 +6,16 @@ import { SyncStatusBadge } from './SyncStatusBadge';
 import { UpdateStatusBadge } from '@/components/Updater/UpdateStatusBadge';
 import { ProfileSettingsPanel } from '@/components/Profile/ProfileSettingsPanel';
 import { supabase } from '@/lib/supabase';
+import type { Tab } from '@/components/Sidebar/Sidebar';
 
 type MenuPlacement = 'top' | 'bottom-end';
 
 interface AuthGateProps {
   menuPlacement?: MenuPlacement;
+  onTabChange?: (tab: Tab) => void;
 }
 
-export function AuthGate({ menuPlacement = 'top' }: AuthGateProps) {
+export function AuthGate({ menuPlacement = 'top', onTabChange }: AuthGateProps) {
   const state = useAuthStore((s) => s.state);
   const signOut = useAuthStore((s) => s.signOut);
   const [open, setOpen] = useState(false);
@@ -99,6 +101,16 @@ export function AuthGate({ menuPlacement = 'top' }: AuthGateProps) {
             <User size={14} aria-hidden="true" />
             Profil
           </button>
+          {onTabChange && (
+            <button
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-neutral-100"
+              onClick={() => { setMenuOpen(false); onTabChange('backup'); }}
+            >
+              <Database size={14} aria-hidden="true" />
+              Kopia zapasowa
+            </button>
+          )}
           <button
             role="menuitem"
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-neutral-100"

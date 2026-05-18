@@ -141,8 +141,8 @@ function App() {
   return (
     <div className="flex h-full bg-neutral-950 text-neutral-100">
       <Sidebar tab={tab} onTabChange={setTab} showTeamTab={showTeamNavItem} />
-      <div className="flex flex-1 justify-center overflow-hidden">
-        <div className="flex h-full w-full max-w-4xl flex-col overflow-hidden">
+      <div className={`flex flex-1 overflow-hidden ${tab !== "projects" && tab !== "dashboard" && tab !== "history" ? "justify-center" : ""}`}>
+        <div className={`flex h-full w-full flex-col overflow-hidden ${tab !== "projects" && tab !== "dashboard" && tab !== "history" ? "max-w-4xl" : ""}`}>
         {tab === "projects" ? (
           <ProjectsView />
         ) : tab === "history" ? (

@@ -116,6 +116,7 @@ export function HistoryView() {
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
       <header className="shrink-0 border-b border-neutral-800 px-4 py-3 space-y-2">
+        <div className="mx-auto w-full max-w-4xl space-y-2">
         <div className="flex items-baseline justify-between gap-2 min-w-0">
           <h1 className="text-lg font-semibold tracking-tight text-neutral-100 shrink-0">Historia</h1>
           <p className="text-xs text-neutral-500 truncate">
@@ -169,6 +170,7 @@ export function HistoryView() {
           to={toIso}
           onChange={(f, t) => { setFromIso(f); setToIso(t); }}
         />
+        </div>
       </header>
 
       {error && (
@@ -178,6 +180,7 @@ export function HistoryView() {
       )}
 
       <main className="flex-1 overflow-auto p-4">
+        <div className="w-full">
         {loading ? (
           <div className="flex h-32 items-center justify-center text-sm text-neutral-500">
             Ładowanie...
@@ -321,6 +324,7 @@ export function HistoryView() {
             ))}
           </div>
         )}
+        </div>
       </main>
 
       {editing && (
