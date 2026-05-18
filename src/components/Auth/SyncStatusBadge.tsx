@@ -34,7 +34,7 @@ export function SyncStatusBadge() {
         ? `Zapisywanie zmian online w tle: ${pending}`
         : 'Synchronizacja online działa w tle';
     Icon = Cloud;
-    cls += ' border-green-500 text-green-400';
+    cls += ' border-transparent text-green-400';
   }
 
   return (

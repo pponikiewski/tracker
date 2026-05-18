@@ -300,8 +300,8 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
   const ttlRatio = Math.max(0, Math.min(1, msLeft / JOIN_CODE_TTL_MS));
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-start justify-end z-50">
-      <div className="bg-neutral-900 border-l border-neutral-700 h-full w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black/70 flex items-start justify-end z-50" onClick={onClose}>
+      <div className="bg-neutral-900 border-l border-neutral-700 h-full w-full max-w-md shadow-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-700 shrink-0">
           <h2 className="text-sm font-medium text-neutral-100">Ustawienia workspace</h2>

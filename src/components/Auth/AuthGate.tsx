@@ -1,5 +1,5 @@
 import { LogOut, User } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { AuthModal } from './AuthModal';
 import { SyncStatusBadge } from './SyncStatusBadge';
@@ -19,6 +19,24 @@ export function AuthGate({ menuPlacement = 'top' }: AuthGateProps) {
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    const onClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onClick);
+    };
+  }, [menuOpen]);
+
   const menuPositionClass =
     menuPlacement === 'bottom-end'
       ? 'right-0 top-full mt-1 w-64'
@@ -51,7 +69,7 @@ export function AuthGate({ menuPlacement = 'top' }: AuthGateProps) {
   const displayEmail = state.user.email ?? '';
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         className="flex w-full items-center gap-2 rounded border border-neutral-700 px-3 py-1.5 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
         onClick={() => setMenuOpen((v) => !v)}
