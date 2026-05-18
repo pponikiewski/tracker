@@ -23,7 +23,7 @@ import {
   type TrackerBackup,
 } from "./backupFormat";
 
-const APP_VERSION = "0.1.6";
+const APP_VERSION = "0.1.7";
 
 interface RestoreResult {
   audit: AuditReport;
