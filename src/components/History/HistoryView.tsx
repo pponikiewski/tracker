@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { AvatarBadge } from "@/components/Profile/AvatarBadge";
 import { LogWorkModal } from "@/components/LogWorkModal";
 import { daysAgoIso } from "@/lib/analytics/aggregate";
@@ -114,47 +115,35 @@ export function HistoryView() {
 
   return (
     <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
-      <header className="shrink-0 border-b border-neutral-800 px-4 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight text-neutral-100">Historia</h1>
-            <p className="mt-1 text-xs text-neutral-500">
-              {events.length} wpisów · {formatMinutes(totalMinutes)}
-            </p>
-          </div>
+      <header className="shrink-0 border-b border-neutral-800 px-4 py-3 space-y-2">
+        <div className="flex items-baseline justify-between gap-2 min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight text-neutral-100 shrink-0">Historia</h1>
+          <p className="text-xs text-neutral-500 truncate">
+            {events.length} wpisów · {formatMinutes(totalMinutes)}
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={personFilter}
-              onChange={(e) => setPersonFilter(e.target.value as PersonFilter)}
-              className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
-              aria-label="Filtr osoby"
-            >
-              <option value="all">Wszyscy</option>
-              {workspaceMembers.map((member) => {
-                const profile = getProfile(member.user_id);
-                return (
-                  <option key={member.user_id} value={member.user_id}>
-                    {profile.display_name}
-                  </option>
-                );
-              })}
-            </select>
-            <input
-              type="date"
-              value={fromIso}
-              onChange={(e) => setFromIso(e.target.value)}
-              className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
-            />
-            <span className="text-neutral-600">→</span>
-            <input
-              type="date"
-              value={toIso}
-              onChange={(e) => setToIso(e.target.value)}
-              className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
-            />
-            <div className="flex gap-1">
-              {RANGE_PRESETS.map((preset) => (
+        <div className="flex items-center gap-2 min-w-0">
+          <select
+            value={personFilter}
+            onChange={(e) => setPersonFilter(e.target.value as PersonFilter)}
+            className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-blue-500"
+            aria-label="Filtr osoby"
+          >
+            <option value="all">Wszyscy</option>
+            {workspaceMembers.map((member) => {
+              const profile = getProfile(member.user_id);
+              return (
+                <option key={member.user_id} value={member.user_id}>
+                  {profile.display_name}
+                </option>
+              );
+            })}
+          </select>
+          <div className="flex shrink-0 gap-1">
+            {RANGE_PRESETS.map((preset) => {
+              const active = fromIso === daysAgoIso(preset.days) && toIso === todayIso();
+              return (
                 <button
                   key={preset.label}
                   type="button"
@@ -162,14 +151,24 @@ export function HistoryView() {
                     setFromIso(daysAgoIso(preset.days));
                     setToIso(todayIso());
                   }}
-                  className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                  className={`rounded border px-2 py-1 text-[11px] transition-colors ${
+                    active
+                      ? "border-blue-500 bg-blue-600/20 text-blue-300"
+                      : "border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                  }`}
                 >
                   {preset.label}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
+
+        <DateRangePicker
+          from={fromIso}
+          to={toIso}
+          onChange={(f, t) => { setFromIso(f); setToIso(t); }}
+        />
       </header>
 
       {error && (
