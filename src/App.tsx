@@ -141,7 +141,8 @@ function App() {
   return (
     <div className="flex h-full bg-neutral-950 text-neutral-100">
       <Sidebar tab={tab} onTabChange={setTab} showTeamTab={showTeamNavItem} />
-      <div className="flex-1 overflow-hidden">
+      <div className="flex flex-1 justify-center overflow-hidden">
+        <div className="flex h-full w-full max-w-4xl flex-col overflow-hidden">
         {tab === "projects" ? (
           <ProjectsView />
         ) : tab === "history" ? (
@@ -195,6 +196,7 @@ function App() {
             <DashboardView />
           </Suspense>
         )}
+        </div>
       </div>
     </div>
   );

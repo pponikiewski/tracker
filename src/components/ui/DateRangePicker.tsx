@@ -26,19 +26,19 @@ const pickerCls = {
   months: "",
   month: "space-y-1",
   month_caption: "flex items-center justify-between px-1 mb-1",
-  caption_label: "text-xs font-semibold text-neutral-100 capitalize",
+  caption_label: "text-[11px] font-semibold text-neutral-100 capitalize",
   nav: "flex items-center gap-0.5",
   button_previous:
-    "flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700 hover:text-white transition-colors",
+    "flex h-5 w-5 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700 hover:text-white transition-colors text-[10px]",
   button_next:
-    "flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700 hover:text-white transition-colors",
+    "flex h-5 w-5 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700 hover:text-white transition-colors text-[10px]",
   month_grid: "w-full",
   weekdays: "",
-  weekday: "pb-1 text-[10px] font-medium text-neutral-600 text-center w-8",
+  weekday: "pb-0.5 text-[9px] font-medium text-neutral-600 text-center w-6",
   week: "",
   day: "p-0 text-center",
   day_button:
-    "mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[11px] text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-white focus:outline-none",
+    "mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-white focus:outline-none",
   selected: "!bg-blue-600 !text-white hover:!bg-blue-500",
   today: "ring-1 ring-inset ring-blue-500 font-semibold text-blue-300",
   outside: "opacity-25 pointer-events-none",
@@ -94,7 +94,7 @@ function SingleDatePicker({ label, value, onChange, min, max }: SingleDatePicker
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1.5 rounded-xl border border-neutral-700 bg-neutral-900 p-3 shadow-2xl">
+        <div className="absolute left-0 top-full z-50 mt-1.5 rounded-xl border border-neutral-700 bg-neutral-900 p-2 shadow-2xl">
           <DayPicker
             mode="single"
             selected={selected}
