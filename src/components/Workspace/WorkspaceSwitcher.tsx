@@ -84,9 +84,9 @@ export function WorkspaceSwitcher() {
 
       {/* ── Authed, single workspace: name + actions ── */}
       {isAuthed && !hasMultiple && (
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <span
-            className="max-w-[200px] truncate px-2 py-1 text-xs text-neutral-300"
+            className="min-w-0 flex-1 truncate px-2 py-1 text-xs text-neutral-300"
             title={activeWorkspace?.name}
           >
             {displayName}
@@ -95,7 +95,7 @@ export function WorkspaceSwitcher() {
             type="button"
             onClick={handleJoinWorkspace}
             title="Dołącz do workspace"
-            className="rounded px-2 py-1 text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+            className="shrink-0 rounded px-2 py-1 text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
           >
             Dołącz
           </button>
@@ -103,7 +103,7 @@ export function WorkspaceSwitcher() {
             type="button"
             onClick={handleNewWorkspace}
             title="Nowy workspace"
-            className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+            className="shrink-0 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
             aria-label="Nowy workspace"
           >
             +
@@ -112,7 +112,7 @@ export function WorkspaceSwitcher() {
             type="button"
             onClick={handleSettingsClick}
             title="Ustawienia workspace"
-            className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+            className="shrink-0 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
             aria-label="Ustawienia workspace"
           >
             ⚙
@@ -123,17 +123,17 @@ export function WorkspaceSwitcher() {
       {/* ── Authed, multiple workspaces: dropdown ── */}
       {hasMultiple && (
         <div className="relative" onBlur={handleDropdownBlur}>
-          <div className="flex items-center gap-1">
+          <div className="flex min-w-0 items-center gap-1">
             {/* Dropdown trigger */}
             <button
               type="button"
               onClick={() => setDropdownOpen((o) => !o)}
-              className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
               aria-haspopup="listbox"
               aria-expanded={dropdownOpen}
               title={activeWorkspace?.name}
             >
-              <span className="max-w-[160px] truncate">{displayName}</span>
+              <span className="min-w-0 flex-1 truncate">{displayName}</span>
               {/* Chevron */}
               <svg
                 className={`h-3 w-3 shrink-0 text-neutral-500 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
@@ -152,7 +152,7 @@ export function WorkspaceSwitcher() {
               type="button"
               onClick={handleSettingsClick}
               title="Ustawienia workspace"
-              className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+              className="shrink-0 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
               aria-label="Ustawienia workspace"
             >
               ⚙
