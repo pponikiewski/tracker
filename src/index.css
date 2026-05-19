@@ -14,6 +14,38 @@ body,
   margin: 0;
 }
 
+/* ── Dim theme (blue-tinted dark) ── */
+[data-theme="dim"] {
+  --color-neutral-950: oklch(15% 0.025 264);
+  --color-neutral-900: oklch(19% 0.03 264);
+  --color-neutral-800: oklch(25% 0.035 264);
+  --color-neutral-700: oklch(33% 0.035 264);
+  --color-neutral-600: oklch(44% 0.03 264);
+  --color-neutral-500: oklch(56% 0.025 264);
+  --color-neutral-400: oklch(68% 0.02 264);
+  --color-neutral-300: oklch(78% 0.015 264);
+  --color-neutral-200: oklch(87% 0.01 264);
+  --color-neutral-100: oklch(94% 0.006 264);
+  scrollbar-color: oklch(33% 0.035 264) oklch(15% 0.025 264);
+}
+
+/* ── Light theme ── */
+[data-theme="light"] {
+  --color-neutral-950: oklch(100% 0 0);
+  --color-neutral-900: oklch(97% 0.002 264);
+  --color-neutral-800: oklch(91% 0.004 264);
+  --color-neutral-700: oklch(83% 0.006 264);
+  --color-neutral-600: oklch(70% 0.007 264);
+  --color-neutral-500: oklch(56% 0.007 264);
+  --color-neutral-400: oklch(43% 0.006 264);
+  --color-neutral-300: oklch(33% 0.005 264);
+  --color-neutral-200: oklch(23% 0.004 264);
+  --color-neutral-100: oklch(14% 0.003 264);
+  scrollbar-color: oklch(83% 0.006 264) oklch(97% 0.002 264);
+}
+[data-theme="light"] *::-webkit-scrollbar-track { background: oklch(97% 0.002 264); }
+[data-theme="light"] *::-webkit-scrollbar-thumb { background: oklch(83% 0.006 264); border-color: oklch(97% 0.002 264); }
+
 * {
   scrollbar-color: #404040 #0a0a0a;
   scrollbar-width: thin;

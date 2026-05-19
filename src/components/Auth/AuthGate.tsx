@@ -1,10 +1,11 @@
-import { Database, LogOut, User } from 'lucide-react';
+import { Database, LogOut, Palette, User } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { AuthModal } from './AuthModal';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { UpdateStatusBadge } from '@/components/Updater/UpdateStatusBadge';
 import { ProfileSettingsPanel } from '@/components/Profile/ProfileSettingsPanel';
+import { ThemePanel } from '@/components/Theme/ThemePanel';
 import { supabase } from '@/lib/supabase';
 import type { Tab } from '@/components/Sidebar/Sidebar';
 
@@ -22,6 +23,7 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState({ bottom: 0, left: 0, width: 0 });
@@ -119,6 +121,14 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
             <User size={14} aria-hidden="true" />
             Profil
           </button>
+          <button
+            role="menuitem"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-neutral-100"
+            onClick={() => { setMenuOpen(false); setThemeOpen(true); }}
+          >
+            <Palette size={14} aria-hidden="true" />
+            Motyw
+          </button>
           {onTabChange && (
             <button
               role="menuitem"
@@ -143,6 +153,7 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
         </div>
       )}
       {profileOpen && <ProfileSettingsPanel onClose={() => setProfileOpen(false)} />}
+      {themeOpen && <ThemePanel onClose={() => setThemeOpen(false)} />}
     </div>
   );
 }

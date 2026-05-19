@@ -410,7 +410,7 @@ export function WorkspaceSettingsPanel({ workspaceId, onClose }: WorkspaceSettin
                         <span
                           className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
                             m.role === "owner"
-                              ? "bg-amber-900/50 text-amber-300"
+                              ? "bg-blue-600/20 text-blue-400"
                               : "bg-neutral-700 text-neutral-400"
                           }`}
                         >
