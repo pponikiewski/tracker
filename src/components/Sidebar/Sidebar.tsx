@@ -50,33 +50,31 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
 
   return (
     <aside
-      className={`flex shrink-0 flex-col border-r border-neutral-800 bg-neutral-950 py-3 transition-[width] duration-300 ease-in-out ${
+      className={`flex shrink-0 flex-col overflow-hidden border-r border-neutral-800 bg-neutral-950 py-3 transition-[width] duration-[260ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
         collapsed ? "w-12" : "w-48"
       }`}
     >
-      {/* Header — crossfade between two layouts so no layout shift */}
+      {/* Header — absolute crossfade, zero layout shift */}
       <div className="relative mb-3 h-9">
         <div
-          className={`absolute inset-0 flex items-center gap-2 px-2 transition-opacity duration-200 ${
-            collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+          role="button"
+          tabIndex={0}
+          onClick={toggle}
+          onKeyDown={(e) => e.key === "Enter" && toggle()}
+          title="Zwiń sidebar"
+          className={`absolute inset-0 flex cursor-pointer items-center gap-2 rounded-md px-2 transition-[opacity] duration-[140ms] hover:bg-neutral-900 ${
+            collapsed ? "pointer-events-none opacity-0" : "opacity-100 delay-100"
           }`}
         >
           <img src={logoUrl} alt="tracker" className="h-7 w-7 shrink-0 rounded-md shadow-sm" />
           <span className="flex-1 truncate text-sm font-semibold tracking-tight text-neutral-100">
             tracker
           </span>
-          <button
-            type="button"
-            onClick={toggle}
-            title="Zwiń sidebar"
-            className="shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-          >
-            <ChevronLeft size={13} />
-          </button>
+          <ChevronLeft size={13} className="shrink-0 text-neutral-500" />
         </div>
         <div
-          className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ${
-            collapsed ? "opacity-100" : "pointer-events-none opacity-0"
+          className={`absolute inset-0 flex items-center justify-center transition-[opacity] duration-[140ms] ${
+            collapsed ? "opacity-100 delay-100" : "pointer-events-none opacity-0"
           }`}
         >
           <button
@@ -90,12 +88,12 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
         </div>
       </div>
 
-      {/* Workspace */}
-      <div className={`px-2 ${collapsed ? "flex justify-center" : ""}`}>
+      {/* Workspace — fixed height prevents nav from jumping during collapse */}
+      <div className={`flex h-8 shrink-0 items-center px-2 ${collapsed ? "justify-center" : ""}`}>
         <WorkspaceSwitcher collapsed={collapsed} />
       </div>
 
-      {/* Nav */}
+      {/* Nav — overflow-hidden on button clips text naturally; icon stays at px-2 (≈ centered at w-12) */}
       <nav className="mt-3 flex flex-col gap-0.5 px-1">
         {items.map((item) => {
           const Icon = item.icon;
@@ -106,9 +104,7 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
               type="button"
               title={collapsed ? `${item.label} (${item.hint})` : item.hint}
               onClick={() => onTabChange(item.id)}
-              className={`flex w-full items-center rounded-md py-2 text-xs font-medium transition-colors ${
-                collapsed ? "justify-center" : "px-2"
-              } ${
+              className={`flex w-full overflow-hidden items-center rounded-md px-3 py-2 text-xs font-medium transition-colors ${
                 active
                   ? "bg-blue-600 text-white"
                   : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
@@ -116,17 +112,13 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
             >
               <Icon size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               <span
-                className={`overflow-hidden transition-[max-width] duration-300 ease-in-out ${
-                  collapsed ? "max-w-0" : "max-w-[8rem]"
+                className={`whitespace-nowrap pl-2.5 transition-[opacity,transform] ease-out ${
+                  collapsed
+                    ? "opacity-0 -translate-x-1 duration-[100ms]"
+                    : "opacity-100 translate-x-0 duration-[180ms] delay-[120ms]"
                 }`}
               >
-                <span
-                  className={`block whitespace-nowrap pl-2.5 transition-opacity duration-200 ${
-                    collapsed ? "opacity-0" : "opacity-100"
-                  }`}
-                >
-                  {item.label}
-                </span>
+                {item.label}
               </span>
             </button>
           );
@@ -136,8 +128,10 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
       {/* Footer */}
       <div className="mt-auto flex flex-col gap-2 border-t border-neutral-800 px-2 pt-3">
         <div
-          className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${
-            collapsed ? "max-h-0 opacity-0" : "max-h-20 opacity-100"
+          className={`overflow-hidden transition-[max-height,opacity] ease-in-out ${
+            collapsed
+              ? "max-h-0 opacity-0 duration-[140ms]"
+              : "max-h-20 opacity-100 duration-[220ms] delay-75"
           }`}
         >
           <PresenceBar />

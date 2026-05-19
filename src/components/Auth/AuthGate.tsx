@@ -1,5 +1,5 @@
 import { Database, LogOut, User } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { AuthModal } from './AuthModal';
 import { SyncStatusBadge } from './SyncStatusBadge';
@@ -23,6 +23,8 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState({ bottom: 0, left: 0, width: 0 });
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -40,10 +42,17 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
     };
   }, [menuOpen]);
 
-  const menuPositionClass =
-    menuPlacement === 'bottom-end'
-      ? 'right-0 top-full mt-1 w-64'
-      : 'bottom-full left-0 mb-2 min-w-56';
+  const openMenu = useCallback(() => {
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      if (menuPlacement === 'bottom-end') {
+        setMenuPos({ bottom: 0, left: r.left, width: 256 });
+      } else {
+        setMenuPos({ bottom: window.innerHeight - r.top + 8, left: r.left, width: Math.max(r.width, 224) });
+      }
+    }
+    setMenuOpen(true);
+  }, [menuPlacement]);
 
   // Req 1.2: hide entirely when supabase client is null (env vars missing)
   if (!supabase) return null;
@@ -75,8 +84,9 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
   return (
     <div className="relative" ref={containerRef}>
       <button
+        ref={triggerRef}
         className={`flex items-center rounded border border-neutral-700 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 ${collapsed ? "w-full justify-center gap-0 p-1.5" : "w-full gap-2 px-3 py-1.5 text-left"}`}
-        onClick={() => setMenuOpen((v) => !v)}
+        onClick={() => menuOpen ? setMenuOpen(false) : openMenu()}
         aria-expanded={menuOpen}
         aria-haspopup="menu"
         title={collapsed ? displayEmail : undefined}
@@ -87,7 +97,12 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
       {menuOpen && (
         <div
           role="menu"
-          className={`absolute z-50 overflow-hidden rounded border border-neutral-700 bg-neutral-800 shadow-xl ${menuPositionClass}`}
+          style={
+            menuPlacement === 'bottom-end'
+              ? { position: 'fixed', top: menuPos.bottom, left: menuPos.left, width: menuPos.width }
+              : { position: 'fixed', bottom: menuPos.bottom, left: menuPos.left, width: menuPos.width }
+          }
+          className="z-50 overflow-hidden rounded border border-neutral-700 bg-neutral-800 shadow-xl"
         >
           <div className="flex flex-col gap-1.5 border-b border-neutral-700 p-2">
             <SyncStatusBadge />
