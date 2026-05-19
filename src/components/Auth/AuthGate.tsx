@@ -67,7 +67,7 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
     return (
       <>
         <button
-          className={`flex items-center justify-center rounded border border-neutral-700 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 ${collapsed ? "w-full p-1.5" : "w-full px-3 py-1"}`}
+          className={`flex h-8 w-full items-center justify-center rounded border border-neutral-700 px-3 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100`}
           title={collapsed ? "Zaloguj się" : undefined}
           onClick={() => setOpen(true)}
         >
@@ -85,7 +85,7 @@ export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false
     <div className="relative" ref={containerRef}>
       <button
         ref={triggerRef}
-        className={`flex items-center rounded border border-neutral-700 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 ${collapsed ? "w-full justify-center gap-0 p-1.5" : "w-full gap-2 px-3 py-1.5 text-left"}`}
+        className={`flex h-8 w-full items-center rounded border border-neutral-700 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 ${collapsed ? "justify-center gap-0 px-2" : "gap-2 px-3 text-left"}`}
         onClick={() => menuOpen ? setMenuOpen(false) : openMenu()}
         aria-expanded={menuOpen}
         aria-haspopup="menu"
