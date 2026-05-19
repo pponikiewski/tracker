@@ -13,9 +13,10 @@ type MenuPlacement = 'top' | 'bottom-end';
 interface AuthGateProps {
   menuPlacement?: MenuPlacement;
   onTabChange?: (tab: Tab) => void;
+  collapsed?: boolean;
 }
 
-export function AuthGate({ menuPlacement = 'top', onTabChange }: AuthGateProps) {
+export function AuthGate({ menuPlacement = 'top', onTabChange, collapsed = false }: AuthGateProps) {
   const state = useAuthStore((s) => s.state);
   const signOut = useAuthStore((s) => s.signOut);
   const [open, setOpen] = useState(false);
@@ -42,7 +43,7 @@ export function AuthGate({ menuPlacement = 'top', onTabChange }: AuthGateProps) 
   const menuPositionClass =
     menuPlacement === 'bottom-end'
       ? 'right-0 top-full mt-1 w-64'
-      : 'bottom-full left-0 mb-1 w-full min-w-56';
+      : 'bottom-full left-0 mb-2 min-w-56';
 
   // Req 1.2: hide entirely when supabase client is null (env vars missing)
   if (!supabase) return null;
@@ -57,10 +58,11 @@ export function AuthGate({ menuPlacement = 'top', onTabChange }: AuthGateProps) 
     return (
       <>
         <button
-          className="rounded border border-neutral-700 px-3 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+          className={`flex items-center justify-center rounded border border-neutral-700 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 ${collapsed ? "w-full p-1.5" : "w-full px-3 py-1"}`}
+          title={collapsed ? "Zaloguj się" : undefined}
           onClick={() => setOpen(true)}
         >
-          Zaloguj się
+          {collapsed ? <User size={14} aria-hidden="true" /> : "Zaloguj się"}
         </button>
         {open && <AuthModal onClose={() => setOpen(false)} />}
       </>
@@ -73,13 +75,14 @@ export function AuthGate({ menuPlacement = 'top', onTabChange }: AuthGateProps) 
   return (
     <div className="relative" ref={containerRef}>
       <button
-        className="flex w-full items-center gap-2 rounded border border-neutral-700 px-3 py-1.5 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+        className={`flex items-center rounded border border-neutral-700 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 ${collapsed ? "w-full justify-center gap-0 p-1.5" : "w-full gap-2 px-3 py-1.5 text-left"}`}
         onClick={() => setMenuOpen((v) => !v)}
         aria-expanded={menuOpen}
         aria-haspopup="menu"
+        title={collapsed ? displayEmail : undefined}
       >
         <User size={14} aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{displayEmail}</span>
+        {!collapsed && <span className="min-w-0 flex-1 truncate">{displayEmail}</span>}
       </button>
       {menuOpen && (
         <div

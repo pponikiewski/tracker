@@ -49,7 +49,7 @@ export async function computeMemberRows(
   const db = await getDb();
 
   const members = await db.select<Array<{ user_id: string }>>(
-    `SELECT user_id FROM workspace_memberships WHERE workspace_id = $1`,
+    `SELECT user_id FROM workspace_memberships WHERE workspace_id = $1 AND deleted_at IS NULL`,
     [workspaceId],
   );
 

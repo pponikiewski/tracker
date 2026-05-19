@@ -12,7 +12,11 @@ function truncate(text: string, n: number): string {
 
 const MAX_NAME_LEN = 50;
 
-export function WorkspaceSwitcher() {
+interface WorkspaceSwitcherProps {
+  collapsed?: boolean;
+}
+
+export function WorkspaceSwitcher({ collapsed = false }: WorkspaceSwitcherProps) {
   const authState = useAuthStore((s) => s.state);
   const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
   const memberships = useWorkspaceStore((s) => s.memberships);
@@ -70,6 +74,77 @@ export function WorkspaceSwitcher() {
       setDropdownOpen(false);
     }
   };
+
+  if (collapsed) {
+    const initial = activeWorkspace ? activeWorkspace.name.charAt(0).toUpperCase() : "W";
+    return (
+      <div className="relative" onBlur={handleDropdownBlur}>
+        <button
+          type="button"
+          onClick={() => setDropdownOpen((o) => !o)}
+          title={activeWorkspace?.name ?? "Workspace"}
+          aria-haspopup="listbox"
+          aria-expanded={dropdownOpen}
+          className="flex h-7 w-7 items-center justify-center rounded bg-neutral-800 text-xs font-semibold text-neutral-200 transition-colors hover:bg-neutral-700 hover:text-white"
+        >
+          {initial}
+        </button>
+        {dropdownOpen && (
+          <div
+            role="listbox"
+            aria-label="Wybierz workspace"
+            className="absolute left-full top-0 z-50 ml-2 min-w-[200px] rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-xl"
+          >
+            {workspaces.map((ws) => {
+              const isActive = ws.id === activeWorkspace?.id;
+              return (
+                <button
+                  key={ws.id}
+                  role="option"
+                  aria-selected={isActive}
+                  type="button"
+                  onClick={() => handleSelectWorkspace(ws.id)}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-neutral-800 ${
+                    isActive ? "text-neutral-100" : "text-neutral-400 hover:text-neutral-200"
+                  }`}
+                >
+                  <span className="w-3 shrink-0 text-blue-400">{isActive ? "✓" : ""}</span>
+                  <span className={`truncate ${isActive ? "font-medium" : ""}`} title={ws.name}>
+                    {truncate(ws.name, MAX_NAME_LEN)}
+                  </span>
+                </button>
+              );
+            })}
+            <div className="my-1 border-t border-neutral-800" />
+            <button
+              type="button"
+              onClick={handleNewWorkspace}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              <span className="w-3 shrink-0 text-neutral-600">+</span>
+              <span>Nowy workspace</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleJoinWorkspace}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              <span className="w-3 shrink-0 text-neutral-600">#</span>
+              <span>Dołącz do workspace…</span>
+            </button>
+          </div>
+        )}
+        {showCreateModal && <WorkspaceCreateModal onClose={() => setShowCreateModal(false)} />}
+        {showJoinModal && <JoinWorkspaceModal onClose={() => setShowJoinModal(false)} />}
+        {showSettings && activeWorkspace && (
+          <WorkspaceSettingsPanel
+            workspaceId={activeWorkspace.id}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
