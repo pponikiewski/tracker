@@ -48,16 +48,33 @@ async function readBackupTables(): Promise<BackupTables> {
     outbox,
   ] = await Promise.all([
     db.select<KvStoreRow[]>(`SELECT key, value FROM kv_store ORDER BY key`),
-    db.select<Workspace[]>(`SELECT * FROM workspaces ORDER BY created_at, id`),
-    db.select<WorkspaceMembership[]>(
-      `SELECT workspace_id, user_id, role, joined_at, display_role, display_role_updated_at, deleted_at
-         FROM workspace_memberships
-        ORDER BY workspace_id, user_id`,
+    db.select<Workspace[]>(
+      `SELECT * FROM workspaces WHERE owner_id != 'local' ORDER BY created_at, id`,
     ),
-    db.select<Resource[]>(`SELECT * FROM resources ORDER BY path, id`),
-    db.select<TimeEvent[]>(`SELECT * FROM events ORDER BY date, created_at, id`),
+    db.select<WorkspaceMembership[]>(
+      `SELECT wm.workspace_id, wm.user_id, wm.role, wm.joined_at, wm.display_role, wm.display_role_updated_at, wm.deleted_at
+         FROM workspace_memberships wm
+         JOIN workspaces w ON w.id = wm.workspace_id
+        WHERE w.owner_id != 'local'
+        ORDER BY wm.workspace_id, wm.user_id`,
+    ),
+    db.select<Resource[]>(
+      `SELECT r.* FROM resources r
+         JOIN workspaces w ON w.id = r.workspace_id
+        WHERE w.owner_id != 'local'
+        ORDER BY r.path, r.id`,
+    ),
+    db.select<TimeEvent[]>(
+      `SELECT e.* FROM events e
+         JOIN workspaces w ON w.id = e.workspace_id
+        WHERE w.owner_id != 'local'
+        ORDER BY e.date, e.created_at, e.id`,
+    ),
     db.select<Assignment[]>(
-      `SELECT * FROM assignments ORDER BY workspace_id, resource_id, user_id`,
+      `SELECT a.* FROM assignments a
+         JOIN workspaces w ON w.id = a.workspace_id
+        WHERE w.owner_id != 'local'
+        ORDER BY a.workspace_id, a.resource_id, a.user_id`,
     ),
     db.select<CachedProfile[]>(`SELECT * FROM profiles_cache ORDER BY user_id`),
     db.select<ActivityLogEntry[]>(`SELECT * FROM activity_log ORDER BY created_at, id`),
@@ -244,6 +261,68 @@ export async function repairLocalData(currentUserId?: string | null): Promise<{
     resourcesMovedToParentWorkspace,
     rootsPromotedToProject,
     audit: await runLocalAudit(currentUserId),
+  };
+}
+
+export async function purgeDeletedRecords(): Promise<{
+  eventsDeleted: number;
+  resourcesDeleted: number;
+  workspacesDeleted: number;
+  membershipsDeleted: number;
+  assignmentsDeleted: number;
+  activityLogDeleted: number;
+  audit: AuditReport;
+}> {
+  const db = await getDb();
+
+  const eventsResult = await db.execute(`DELETE FROM events WHERE deleted_at IS NOT NULL`);
+  const assignmentsResult = await db.execute(
+    `DELETE FROM assignments WHERE deleted_at IS NOT NULL`,
+  );
+  const activityResult = await db.execute(
+    `DELETE FROM activity_log WHERE deleted_at IS NOT NULL`,
+  );
+  const membershipsResult = await db.execute(
+    `DELETE FROM workspace_memberships WHERE deleted_at IS NOT NULL`,
+  );
+
+  // Bottom-up: delete soft-deleted resources that have no active children referencing them
+  let resourcesDeleted = 0;
+  for (let i = 0; i < 32; i++) {
+    const result = await db.execute(
+      `DELETE FROM resources
+        WHERE deleted_at IS NOT NULL
+          AND id NOT IN (
+            SELECT DISTINCT parent_id FROM resources
+             WHERE parent_id IS NOT NULL AND deleted_at IS NULL
+          )`,
+    );
+    const n = result.rowsAffected ?? 0;
+    if (n === 0) break;
+    resourcesDeleted += n;
+  }
+
+  // Promote any active resource whose parent was just deleted
+  await db.execute(
+    `UPDATE resources SET parent_id = NULL
+      WHERE parent_id IS NOT NULL
+        AND parent_id NOT IN (SELECT id FROM resources)`,
+  );
+
+  const workspacesResult = await db.execute(
+    `DELETE FROM workspaces WHERE deleted_at IS NOT NULL`,
+  );
+
+  await recalcAllCachedMinutes();
+
+  return {
+    eventsDeleted: eventsResult.rowsAffected ?? 0,
+    resourcesDeleted,
+    workspacesDeleted: workspacesResult.rowsAffected ?? 0,
+    membershipsDeleted: membershipsResult.rowsAffected ?? 0,
+    assignmentsDeleted: assignmentsResult.rowsAffected ?? 0,
+    activityLogDeleted: activityResult.rowsAffected ?? 0,
+    audit: await runLocalAudit(),
   };
 }
 

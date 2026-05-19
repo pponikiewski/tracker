@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Database,
   Download,
+  Eraser,
   Menu as MenuIcon,
   RefreshCcw,
   ShieldCheck,
@@ -14,6 +15,7 @@ import {
 import { getDb } from "@/lib/db/connection";
 import {
   exportBackup,
+  purgeDeletedRecords,
   repairLocalData,
   restoreBackupFromText,
   runLocalAudit,
@@ -27,7 +29,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { useAssignmentStore } from "@/store/assignments";
 import { useProfileStore } from "@/store/profile";
 
-type BusyState = "export" | "restore" | "audit" | "repair" | "wipe" | null;
+type BusyState = "export" | "restore" | "audit" | "repair" | "purge" | "wipe" | null;
 
 function severityClass(severity: AuditSeverity): string {
   switch (severity) {
@@ -226,6 +228,37 @@ export function BackupView() {
     }
   };
 
+  const onPurge = async () => {
+    const ok = window.confirm(
+      "Usuwa z lokalnej bazy wszystkie trwale skasowane rekordy (deleted_at IS NOT NULL): " +
+        "workspace, zasoby, eventy, wpisy historii, członkostwa. " +
+        "Dane zsynchronizowane z chmurą zostaną pobrane ponownie przy następnym sync. Kontynuować?",
+    );
+    if (!ok) return;
+    setBusy("purge");
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await purgeDeletedRecords();
+      await refreshAppState();
+      setAudit(result.audit);
+      setMessage(
+        `Wyczyszczono usunięte rekordy: ${result.resourcesDeleted} zasobów, ` +
+          `${result.eventsDeleted} wpisów czasu, ${result.workspacesDeleted} workspace, ` +
+          `${result.membershipsDeleted} członkostw, ${result.assignmentsDeleted} przypisań, ` +
+          `${result.activityLogDeleted} wpisów aktywności.`,
+      );
+    } catch (purgeError) {
+      setError(
+        purgeError instanceof Error
+          ? purgeError.message
+          : "Nie udało się wyczyścić usuniętych rekordów.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onWipe = async () => {
     const ok = window.confirm(
       "UWAGA: skasowanie lokalnej bazy usunie wszystkie lokalne workspace, zasoby, eventy, outbox i cache. " +
@@ -343,6 +376,20 @@ export function BackupView() {
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
+                    void onPurge();
+                  }}
+                  disabled={isBusy}
+                  title="Usuń trwale wszystkie rekordy oznaczone jako skasowane (deleted_at IS NOT NULL)"
+                  className="flex w-full items-center gap-2 border-t border-neutral-800 px-3 py-2 text-left text-xs text-amber-200 transition-colors hover:bg-amber-950/30 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Eraser size={14} aria-hidden="true" />
+                  Wyczyść usunięte dane
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
                     void onWipe();
                   }}
                   disabled={isBusy}
@@ -415,7 +462,9 @@ export function BackupView() {
                 ? "Przywracanie..."
                 : busy === "repair"
                   ? "Naprawa..."
-                  : "Audyt..."}
+                  : busy === "purge"
+                    ? "Czyszczenie usuniętych..."
+                    : "Audyt..."}
           </div>
         )}
         {error && (
