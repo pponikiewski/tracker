@@ -22,6 +22,7 @@ import {
   type ResourceType,
 } from "@/lib/db/types";
 import { isDescendantPath } from "@/lib/utils/tree";
+import { gooeyToast } from "goey-toast";
 
 const TYPE_LABEL: Record<ResourceType, string> = {
   project: "Projekt",
@@ -175,10 +176,14 @@ export function ProjectsView() {
         label: "Wznów",
         onClick: () => {
           if (parentIsCompleted) {
-            const proceed = window.confirm(
-              `Projekt nadrzędny jest też zakończony.\nBez jego wznowienia ten element nie będzie widoczny w drzewie.\n\nCzy mimo to wznowić tylko ten element?`,
-            );
-            if (!proceed) return;
+            gooeyToast.warning("Projekt nadrzędny jest też zakończony", {
+              description: "Bez jego wznowienia ten element nie będzie widoczny w drzewie.",
+              action: {
+                label: "Wznów mimo to",
+                onClick: () => void uncompleteSubtree(id),
+              },
+            });
+            return;
           }
           void uncompleteSubtree(id);
         },

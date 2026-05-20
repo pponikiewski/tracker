@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { GooeyToaster } from "goey-toast";
 import { LoginPage } from "@/components/Auth/LoginPage";
 import { Sidebar, type Tab } from "@/components/Sidebar/Sidebar";
 import { WorkspaceEmptyState } from "@/components/Workspace/WorkspaceEmptyState";
@@ -139,6 +140,8 @@ function App() {
   }
 
   return (
+    <>
+    <GooeyToaster position="bottom-right" />
     <div className="flex h-full bg-neutral-950 text-neutral-100">
       <Sidebar tab={tab} onTabChange={setTab} showTeamTab={showTeamNavItem} />
       <div className={`flex flex-1 overflow-hidden ${tab !== "projects" && tab !== "dashboard" && tab !== "history" && tab !== "activity" && tab !== "team" ? "justify-center" : ""}`}>
@@ -199,6 +202,7 @@ function App() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

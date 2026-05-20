@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "goey-toast/styles.css";
 import { useAuthStore, type AuthState } from "@/store/auth";
 import { useWorkspaceStore } from "@/store/workspace";
 import { resetUserScopedData } from "@/lib/db/connection";
