@@ -88,6 +88,11 @@ async function purgeLocalOutboxRows(db: Database): Promise<void> {
   }
 }
 
+async function ensureCompletedAtColumn(db: Database): Promise<void> {
+  if (await hasColumn(db, "resources", "completed_at")) return;
+  await db.execute("ALTER TABLE resources ADD COLUMN completed_at INTEGER");
+}
+
 export async function getDb(): Promise<Database> {
   if (cached) return cached;
   const db = await Database.load(DB_URL);
@@ -109,6 +114,8 @@ export async function getDb(): Promise<Database> {
   await markSchemaMigration(db, "20260720000002_workspace_query_indexes");
   await purgeLocalOutboxRows(db);
   await purgeLegacyResourceSortOrderFromOutbox(db);
+  await ensureCompletedAtColumn(db);
+  await markSchemaMigration(db, "20260801000001_completed_at_repair");
   cached = db;
   return db;
 }

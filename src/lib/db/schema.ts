@@ -240,3 +240,7 @@ CREATE INDEX IF NOT EXISTS idx_events_workspace_date_active
 CREATE INDEX IF NOT EXISTS idx_events_workspace_user_date_active
   ON events(workspace_id, user_id, date, deleted_at);
 `;
+
+export const SCHEMA_COMPLETED_SQL = `
+ALTER TABLE resources ADD COLUMN completed_at INTEGER;
+`;
