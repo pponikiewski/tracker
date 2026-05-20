@@ -176,11 +176,14 @@ export function ProjectsView() {
         label: "Wznów",
         onClick: () => {
           if (parentIsCompleted) {
-            gooeyToast.warning("Projekt nadrzędny jest też zakończony", {
+            const toastId = gooeyToast.warning("Projekt nadrzędny jest też zakończony", {
               description: "Bez jego wznowienia ten element nie będzie widoczny w drzewie.",
               action: {
                 label: "Wznów mimo to",
-                onClick: () => void uncompleteSubtree(id),
+                onClick: () => {
+                  gooeyToast.dismiss(toastId);
+                  void uncompleteSubtree(id);
+                },
               },
             });
             return;
