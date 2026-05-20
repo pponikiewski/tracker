@@ -65,6 +65,7 @@ export function ProjectsView() {
   const liftAndDelete = useProjects((s) => s.liftAndDelete);
   const detachAsProjects = useProjects((s) => s.detachAsProjects);
   const logTime = useProjects((s) => s.logTime);
+  const completedResources = useProjects((s) => s.completedResources);
   const completedTree = useProjects((s) => s.completedTree);
   const completeSubtree = useProjects((s) => s.completeSubtree);
   const uncompleteSubtree = useProjects((s) => s.uncompleteSubtree);
@@ -83,6 +84,7 @@ export function ProjectsView() {
   const resetDrag = useTreeUiStore((s) => s.resetDrag);
   const draggingIdRef = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [completedMenu, setCompletedMenu] = useState<MenuState | null>(null);
   const [createModal, setCreateModal] = useState<CreateModalState | null>(null);
   const [colorTargetId, setColorTargetId] = useState<string | null>(null);
   const [logWorkResource, setLogWorkResource] = useState<Resource | null>(null);
@@ -152,6 +154,37 @@ export function ProjectsView() {
     },
     [setSelectedId],
   );
+
+  const handleContextNodeCompleted = useCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCompletedMenu({ x: e.clientX, y: e.clientY, targetId: id });
+    },
+    [],
+  );
+
+  const buildCompletedMenuItems = (id: string): MenuEntry[] => {
+    const node = completedResources.find((r) => r.id === id);
+    if (!node) return [];
+    const parentIsCompleted = node.parent_id
+      ? completedResources.some((r) => r.id === node.parent_id)
+      : false;
+    return [
+      {
+        label: "Wznów",
+        onClick: () => {
+          if (parentIsCompleted) {
+            const proceed = window.confirm(
+              `Projekt nadrzędny jest też zakończony.\nBez jego wznowienia ten element nie będzie widoczny w drzewie.\n\nCzy mimo to wznowić tylko ten element?`,
+            );
+            if (!proceed) return;
+          }
+          void uncompleteSubtree(id);
+        },
+      },
+    ];
+  };
 
   const handleLogWork = useCallback(
     (id: string) => {
@@ -484,7 +517,7 @@ export function ProjectsView() {
             <CompletedSection
               tree={completedTree}
               onUnomplete={(id) => void uncompleteSubtree(id)}
-              onContextMenu={handleContextNode}
+              onContextMenu={handleContextNodeCompleted}
             />
           }
         />
@@ -496,6 +529,15 @@ export function ProjectsView() {
           y={menu.y}
           items={buildMenuItems(menu.targetId)}
           onClose={() => setMenu(null)}
+        />
+      )}
+
+      {completedMenu?.targetId && (
+        <ContextMenu
+          x={completedMenu.x}
+          y={completedMenu.y}
+          items={buildCompletedMenuItems(completedMenu.targetId)}
+          onClose={() => setCompletedMenu(null)}
         />
       )}
 
