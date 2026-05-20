@@ -26,10 +26,12 @@ import {
   getResource,
   liftChildrenAndDelete,
   listActiveResources,
+  listCompletedResources,
   listResourcesByIds,
   moveResource,
   renameResource,
   setResourceColor,
+  setSubtreeCompleted,
   softDeleteSubtree,
   updateEvent,
   type CreateEventInput,
@@ -88,6 +90,8 @@ interface ProjectsState {
   expandedIds: Set<string>;
   loading: boolean;
   error: string | null;
+  completedResources: Resource[];
+  completedTree: ResourceNode[];
 
   refresh: (options?: { showLoading?: boolean }) => Promise<void>;
   toggleExpanded: (id: string) => void;
@@ -105,6 +109,8 @@ interface ProjectsState {
   deleteSubtree: (id: string) => Promise<void>;
   liftAndDelete: (id: string) => Promise<void>;
   detachAsProjects: (id: string) => Promise<void>;
+  completeSubtree: (id: string) => Promise<void>;
+  uncompleteSubtree: (id: string) => Promise<void>;
   logTime: (input: Omit<CreateEventInput, "workspaceId">) => Promise<void>;
   updateLog: (input: UpdateEventInput) => Promise<void>;
   deleteLog: (id: string) => Promise<void>;
@@ -116,6 +122,8 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   expandedIds: new Set(),
   loading: false,
   error: null,
+  completedResources: [],
+  completedTree: [],
 
   refresh: async (options) => {
     const showLoading = options?.showLoading ?? true;
@@ -151,7 +159,14 @@ export const useProjects = create<ProjectsState>((set, get) => ({
         if (get().loading) set({ loading: false });
         return;
       }
-      set((state) => ({ resources: reused, tree: buildTree(reused, state.tree), loading: false }));
+      const nextCompleted = await listCompletedResources(activeWorkspaceId);
+      set((state) => ({
+        resources: reused,
+        tree: buildTree(reused, state.tree),
+        completedResources: nextCompleted,
+        completedTree: buildTree(nextCompleted, state.completedTree),
+        loading: false,
+      }));
     } catch (e) {
       set((state) => ({
         error: e instanceof Error ? e.message : String(e),
@@ -349,6 +364,16 @@ export const useProjects = create<ProjectsState>((set, get) => ({
 
   detachAsProjects: async (id) => {
     await detachChildrenAsProjects(id);
+    await get().refresh({ showLoading: false });
+  },
+
+  completeSubtree: async (id) => {
+    await setSubtreeCompleted(id, true);
+    await get().refresh({ showLoading: false });
+  },
+
+  uncompleteSubtree: async (id) => {
+    await setSubtreeCompleted(id, false);
     await get().refresh({ showLoading: false });
   },
 
