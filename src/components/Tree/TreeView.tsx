@@ -6,10 +6,11 @@ interface Props extends TreeCallbacks {
   onContextMenuEmpty: (e: React.MouseEvent) => void;
   onDropEmpty: (e: React.DragEvent) => void;
   onDragOverEmpty: (e: React.DragEvent) => void;
+  footer?: React.ReactNode;
 }
 
 export function TreeView(props: Props) {
-  const { tree, onContextMenuEmpty, onDropEmpty, onDragOverEmpty, ...callbacks } = props;
+  const { tree, onContextMenuEmpty, onDropEmpty, onDragOverEmpty, footer, ...callbacks } = props;
   return (
     <div
       onContextMenu={(e) => {
@@ -28,6 +29,7 @@ export function TreeView(props: Props) {
       {tree.map((node) => (
         <TreeNode key={node.id} {...callbacks} node={node} depth={0} />
       ))}
+      {footer}
     </div>
   );
 }

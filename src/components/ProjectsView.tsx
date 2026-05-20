@@ -480,11 +480,13 @@ export function ProjectsView() {
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           onDragEnd={handleDragEnd}
-        />
-        <CompletedSection
-          tree={completedTree}
-          onUnomplete={(id) => void uncompleteSubtree(id)}
-          onContextMenu={handleContextNode}
+          footer={
+            <CompletedSection
+              tree={completedTree}
+              onUnomplete={(id) => void uncompleteSubtree(id)}
+              onContextMenu={handleContextNode}
+            />
+          }
         />
       </main>
 
