@@ -22,6 +22,7 @@ import {
   type ResourceType,
 } from "@/lib/db/types";
 import { isDescendantPath } from "@/lib/utils/tree";
+import { formatMinutes } from "@/lib/utils/time";
 import { gooeyToast } from "goey-toast";
 
 const TYPE_LABEL: Record<ResourceType, string> = {
@@ -183,12 +184,14 @@ export function ProjectsView() {
                 onClick: () => {
                   gooeyToast.dismiss(toastId);
                   void uncompleteSubtree(id);
+                  gooeyToast.success(`Wznowiono „${node?.name ?? ""}"`);
                 },
               },
             });
             return;
           }
           void uncompleteSubtree(id);
+          gooeyToast.success(`Wznowiono „${node?.name ?? ""}"`);
         },
       },
     ];
@@ -236,6 +239,7 @@ export function ProjectsView() {
       onConfirm: async ({ name, color }) => {
         await addProject(name, color);
         setCreateModal(null);
+        gooeyToast.success(`Dodano projekt „${name}"`);
       },
     });
   };
@@ -252,6 +256,7 @@ export function ProjectsView() {
       onConfirm: async ({ name, color }) => {
         await addChild(parentId, name, type, color);
         setCreateModal(null);
+        gooeyToast.success(`Dodano ${TYPE_LABEL[type].toLowerCase()} „${name}"`);
       },
     });
   };
@@ -297,9 +302,11 @@ export function ProjectsView() {
       resetDrag();
       if (!canDropOn(src, id)) return;
       try {
+        const moved = findCurrentResource(src);
         await move(src, id);
+        if (moved) gooeyToast.success(`Przeniesiono „${moved.name}"`);
       } catch {
-        /* validation error — silently ignore for MVP */
+        gooeyToast.error("Nie udało się przenieść elementu");
       }
     },
     [canDropOn, resetDrag, move],
@@ -486,7 +493,10 @@ export function ProjectsView() {
     items.push({ separator: true });
     items.push({
       label: "Zakończ",
-      onClick: () => void completeSubtree(node.id),
+      onClick: () => {
+        void completeSubtree(node.id);
+        gooeyToast.success(`Zakończono „${node.name}"`);
+      },
     });
 
     items.push({ separator: true });
@@ -607,6 +617,7 @@ export function ProjectsView() {
           onSubmit={async (input) => {
             await logTime({ resourceId: logWorkResource.id, ...input });
             setLogWorkResource(null);
+            gooeyToast.success(`Zalogowano ${formatMinutes(input.minutes)} dla „${logWorkResource.name}"`);
           }}
           onCancel={() => setLogWorkResource(null)}
         />
