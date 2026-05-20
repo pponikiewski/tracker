@@ -80,10 +80,8 @@ export function CompletedSection({ tree, onUnomplete, onContextMenu }: Props) {
   if (tree.length === 0) return null;
 
   return (
-    <div className="mt-1 border-t border-neutral-800/60">
-      <div className="px-3 py-1.5 text-xs font-medium text-neutral-600">
-        Zakończone ({tree.length})
-      </div>
+    <div>
+      <div className="my-1 mx-3 h-px bg-neutral-800/60" />
       <div>
         {tree.map((node) => (
           <CompletedNode
