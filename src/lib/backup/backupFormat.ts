@@ -186,6 +186,7 @@ function parseResource(row: Record<string, unknown>, context: string): Resource 
     created_at: requiredNumber(row, "created_at", context),
     updated_at: requiredNumber(row, "updated_at", context),
     deleted_at: nullableNumber(row, "deleted_at", context),
+    completed_at: nullableNumber(row, "completed_at", context),
   };
 }
 

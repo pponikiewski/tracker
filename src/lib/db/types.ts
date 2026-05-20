@@ -13,6 +13,7 @@ export interface Resource {
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
+  completed_at: number | null;
 }
 
 export interface TimeEvent {

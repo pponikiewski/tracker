@@ -46,6 +46,7 @@ const tables: BackupTables = {
       created_at: 1,
       updated_at: 1,
       deleted_at: null,
+      completed_at: null,
     },
     {
       id: "task-1",
@@ -59,6 +60,7 @@ const tables: BackupTables = {
       created_at: 2,
       updated_at: 2,
       deleted_at: null,
+      completed_at: null,
     },
   ],
   events: [

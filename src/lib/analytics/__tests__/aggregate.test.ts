@@ -20,6 +20,7 @@ function resource(partial: Partial<Resource>): Resource {
     created_at: 1_000,
     updated_at: 1_000,
     deleted_at: null,
+    completed_at: null,
     ...partial,
   };
 }

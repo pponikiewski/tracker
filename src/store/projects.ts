@@ -13,7 +13,8 @@ function resourceEqual(a: Resource, b: Resource): boolean {
     a.cached_minutes === b.cached_minutes &&
     a.created_at === b.created_at &&
     a.updated_at === b.updated_at &&
-    a.deleted_at === b.deleted_at
+    a.deleted_at === b.deleted_at &&
+    a.completed_at === b.completed_at
   );
 }
 import {
@@ -183,6 +184,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
+      completed_at: null,
     };
     set((state) => {
       const resources = mergeResourceRows(state.resources, [optimistic]);
@@ -234,6 +236,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
+      completed_at: null,
     };
     set((s) => ({ expandedIds: new Set([...s.expandedIds, parentId]) }));
     set((state) => {

@@ -56,6 +56,7 @@ function cloudToLocalResource(c: Record<string, unknown>): Resource {
     created_at: toMs(c.created_at),
     updated_at: toMs(c.updated_at),
     deleted_at: c.deleted_at ? toMs(c.deleted_at) : null,
+    completed_at: c.completed_at ? toMs(c.completed_at) : null,
   };
 }
 
