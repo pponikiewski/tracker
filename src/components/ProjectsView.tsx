@@ -184,14 +184,14 @@ export function ProjectsView() {
                 onClick: () => {
                   gooeyToast.dismiss(toastId);
                   void uncompleteSubtree(id);
-                  gooeyToast.success(`Wznowiono „${node?.name ?? ""}"`);
+                  gooeyToast.success(`Wznowiono „${node?.name ?? ""}"`, { description: "Element przywrócony do aktywnych." });
                 },
               },
             });
             return;
           }
           void uncompleteSubtree(id);
-          gooeyToast.success(`Wznowiono „${node?.name ?? ""}"`);
+          gooeyToast.success(`Wznowiono „${node?.name ?? ""}"`, { description: "Element przywrócony do aktywnych." });
         },
       },
     ];
@@ -239,7 +239,7 @@ export function ProjectsView() {
       onConfirm: async ({ name, color }) => {
         await addProject(name, color);
         setCreateModal(null);
-        gooeyToast.success(`Dodano projekt „${name}"`);
+        gooeyToast.success(`Dodano projekt „${name}"`, { description: "Projekt pojawił się w drzewie." });
       },
     });
   };
@@ -256,7 +256,7 @@ export function ProjectsView() {
       onConfirm: async ({ name, color }) => {
         await addChild(parentId, name, type, color);
         setCreateModal(null);
-        gooeyToast.success(`Dodano ${TYPE_LABEL[type].toLowerCase()} „${name}"`);
+        gooeyToast.success(`Dodano ${TYPE_LABEL[type].toLowerCase()} „${name}"`, { description: "Element pojawił się w drzewie." });
       },
     });
   };
@@ -304,9 +304,9 @@ export function ProjectsView() {
       try {
         const moved = findCurrentResource(src);
         await move(src, id);
-        if (moved) gooeyToast.success(`Przeniesiono „${moved.name}"`);
+        if (moved) gooeyToast.success(`Przeniesiono „${moved.name}"`, { description: "Pozycja w hierarchii zaktualizowana." });
       } catch {
-        gooeyToast.error("Nie udało się przenieść elementu");
+        gooeyToast.error("Nie udało się przenieść elementu", { description: "Sprawdź czy cel jest poprawny." });
       }
     },
     [canDropOn, resetDrag, move],
@@ -495,7 +495,7 @@ export function ProjectsView() {
       label: "Zakończ",
       onClick: () => {
         void completeSubtree(node.id);
-        gooeyToast.success(`Zakończono „${node.name}"`);
+        gooeyToast.success(`Zakończono „${node.name}"`, { description: "Element przeniesiony do sekcji Zakończone." });
       },
     });
 
@@ -617,7 +617,7 @@ export function ProjectsView() {
           onSubmit={async (input) => {
             await logTime({ resourceId: logWorkResource.id, ...input });
             setLogWorkResource(null);
-            gooeyToast.success(`Zalogowano ${formatMinutes(input.minutes)} dla „${logWorkResource.name}"`);
+            gooeyToast.success(`Zalogowano ${formatMinutes(input.minutes)} dla „${logWorkResource.name}"`, { description: "Czas zapisany i zsumowany w drzewie." });
           }}
           onCancel={() => setLogWorkResource(null)}
         />
