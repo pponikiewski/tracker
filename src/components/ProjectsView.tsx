@@ -5,6 +5,7 @@ import { useAssignmentStore } from "@/store/assignments";
 import { usePresenceStore } from "@/store/presence";
 import { useTreeUiStore } from "@/store/treeUi";
 import { TreeView } from "./Tree/TreeView";
+import { CompletedSection } from "./Tree/CompletedSection";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { ColorPickerModal } from "./ColorPickerModal";
 import { CreateResourceModal } from "./CreateResourceModal";
@@ -64,6 +65,9 @@ export function ProjectsView() {
   const liftAndDelete = useProjects((s) => s.liftAndDelete);
   const detachAsProjects = useProjects((s) => s.detachAsProjects);
   const logTime = useProjects((s) => s.logTime);
+  const completedTree = useProjects((s) => s.completedTree);
+  const completeSubtree = useProjects((s) => s.completeSubtree);
+  const uncompleteSubtree = useProjects((s) => s.uncompleteSubtree);
 
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const memberships = useWorkspaceStore((s) => s.memberships);
@@ -411,6 +415,12 @@ export function ProjectsView() {
     }
 
     items.push({ separator: true });
+    items.push({
+      label: "Zakończ",
+      onClick: () => void completeSubtree(node.id),
+    });
+
+    items.push({ separator: true });
 
     if (node.type === "project") {
       items.push({
@@ -470,6 +480,11 @@ export function ProjectsView() {
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           onDragEnd={handleDragEnd}
+        />
+        <CompletedSection
+          tree={completedTree}
+          onUnomplete={(id) => void uncompleteSubtree(id)}
+          onContextMenu={handleContextNode}
         />
       </main>
 
