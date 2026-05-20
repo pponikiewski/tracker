@@ -22,9 +22,37 @@ export async function listActiveResources(workspaceId: string): Promise<Resource
   const db = await getDb();
   return db.select<Resource[]>(
     `SELECT * FROM resources
-     WHERE workspace_id = $1 AND deleted_at IS NULL
+     WHERE workspace_id = $1 AND deleted_at IS NULL AND completed_at IS NULL
      ORDER BY path, name ASC, created_at ASC`,
     [workspaceId],
+  );
+}
+
+export async function listCompletedResources(workspaceId: string): Promise<Resource[]> {
+  const db = await getDb();
+  return db.select<Resource[]>(
+    `SELECT * FROM resources
+     WHERE workspace_id = $1 AND deleted_at IS NULL AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC, path ASC`,
+    [workspaceId],
+  );
+}
+
+export async function setSubtreeCompleted(id: string, completed: boolean): Promise<void> {
+  const db = await getDb();
+  const rows = await db.select<Array<{ path: string }>>(
+    "SELECT path FROM resources WHERE id = $1 LIMIT 1",
+    [id],
+  );
+  if (rows.length === 0) return;
+  const path = rows[0]!.path;
+  const ts = completed ? Date.now() : null;
+  const now = Date.now();
+  await db.execute(
+    `UPDATE resources
+     SET completed_at = $1, updated_at = $2
+     WHERE (path = $3 OR path LIKE $4) AND deleted_at IS NULL`,
+    [ts, now, path, `${path}/%`],
   );
 }
 
