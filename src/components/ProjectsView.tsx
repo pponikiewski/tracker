@@ -352,11 +352,22 @@ export function ProjectsView() {
         setRenamingId(selectedId);
         return;
       }
-      // Delete → soft delete subtree
+      // Delete → soft delete subtree (with toast confirmation)
       if (e.key === "Delete" || (mod && e.key === "Backspace")) {
         e.preventDefault();
-        void deleteSubtree(selectedId);
-        setSelectedId(null);
+        const r = findResource(selectedId);
+        const name = r?.name ?? "element";
+        const toastId = gooeyToast.warning("Na pewno usunąć?", {
+          description: `„${name}" i cały podzespół zostanie trwale usunięty.`,
+          action: {
+            label: "Usuń",
+            onClick: () => {
+              gooeyToast.dismiss(toastId);
+              void deleteSubtree(selectedId);
+              setSelectedId(null);
+            },
+          },
+        });
         return;
       }
       // L → log work
@@ -399,6 +410,23 @@ export function ProjectsView() {
   }, [selectedId, resources]);
 
   // ---- Menu items ----
+
+  const confirmDelete = (name: string, onConfirm: () => void, withSubtree = false) => {
+    const label = withSubtree ? "Usuń wszystko" : "Usuń";
+    const desc = withSubtree
+      ? `„${name}" i cały podzespół zostanie trwale usunięty.`
+      : `„${name}" zostanie usunięty.`;
+    const id = gooeyToast.warning(`Na pewno usunąć?`, {
+      description: desc,
+      action: {
+        label,
+        onClick: () => {
+          gooeyToast.dismiss(id);
+          onConfirm();
+        },
+      },
+    });
+  };
 
   const buildMenuItems = (targetId: string | null): MenuEntry[] => {
     if (targetId === null) {
@@ -466,18 +494,18 @@ export function ProjectsView() {
     if (node.type === "project") {
       items.push({
         label: `Usuń ${TYPE_LABEL[node.type].toLowerCase()}`,
-        onClick: () => void detachAsProjects(node.id),
+        onClick: () => confirmDelete(node.name, () => void detachAsProjects(node.id)),
       });
     } else {
       items.push({
         label: `Usuń ${TYPE_LABEL[node.type].toLowerCase()}`,
-        onClick: () => void liftAndDelete(node.id),
+        onClick: () => confirmDelete(node.name, () => void liftAndDelete(node.id)),
       });
     }
     items.push({
       label: "Usuń wszystko (Delete)",
       danger: true,
-      onClick: () => void deleteSubtree(node.id),
+      onClick: () => confirmDelete(node.name, () => void deleteSubtree(node.id), true),
     });
 
     return items;
