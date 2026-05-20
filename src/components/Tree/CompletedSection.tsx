@@ -77,37 +77,24 @@ function CompletedNode({
 }
 
 export function CompletedSection({ tree, onUnomplete, onContextMenu }: Props) {
-  const [open, setOpen] = useState(false);
-
   if (tree.length === 0) return null;
 
   return (
     <div className="mt-1 border-t border-neutral-800/60">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-neutral-600 transition-colors hover:text-neutral-400"
-      >
-        <ChevronRight
-          size={11}
-          className={`transition-transform ${open ? "rotate-90" : ""}`}
-        />
-        <span>Zakończone ({tree.length})</span>
-      </button>
-
-      {open && (
-        <div>
-          {tree.map((node) => (
-            <CompletedNode
-              key={node.id}
-              node={node}
-              depth={0}
-              onUnomplete={onUnomplete}
-              onContextMenu={onContextMenu}
-            />
-          ))}
-        </div>
-      )}
+      <div className="px-3 py-1.5 text-xs font-medium text-neutral-600">
+        Zakończone ({tree.length})
+      </div>
+      <div>
+        {tree.map((node) => (
+          <CompletedNode
+            key={node.id}
+            node={node}
+            depth={0}
+            onUnomplete={onUnomplete}
+            onContextMenu={onContextMenu}
+          />
+        ))}
+      </div>
     </div>
   );
 }
