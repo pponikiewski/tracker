@@ -141,7 +141,7 @@ function App() {
 
   return (
     <>
-    <GooeyToaster position="bottom-right" />
+    <GooeyToaster position="top-center" />
     <div className="flex h-full bg-neutral-950 text-neutral-100">
       <Sidebar tab={tab} onTabChange={setTab} showTeamTab={showTeamNavItem} />
       <div className={`flex flex-1 overflow-hidden ${tab !== "projects" && tab !== "dashboard" && tab !== "history" && tab !== "activity" && tab !== "team" ? "justify-center" : ""}`}>
