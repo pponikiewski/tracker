@@ -50,7 +50,7 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
 
   return (
     <aside
-      className={`flex shrink-0 flex-col overflow-hidden border-r border-neutral-800 bg-neutral-950 py-3 transition-[width] duration-[260ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
+      className={`flex shrink-0 flex-col overflow-hidden border-r border-neutral-800 bg-neutral-950 py-3 transition-[width] duration-260 ease-in-out ${
         collapsed ? "w-12" : "w-48"
       }`}
     >
@@ -62,7 +62,7 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
           onClick={toggle}
           onKeyDown={(e) => e.key === "Enter" && toggle()}
           title="Zwiń sidebar"
-          className={`absolute inset-0 flex cursor-pointer items-center gap-2 rounded-md px-2 transition-[opacity] duration-[140ms] hover:bg-neutral-900 ${
+          className={`absolute inset-0 flex cursor-pointer items-center gap-2 rounded-md px-2 transition-opacity duration-140 hover:bg-neutral-900 ${
             collapsed ? "pointer-events-none opacity-0" : "opacity-100 delay-100"
           }`}
         >
@@ -73,7 +73,7 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
           <ChevronLeft size={13} className="shrink-0 text-neutral-500" />
         </div>
         <div
-          className={`absolute inset-0 flex items-center justify-center transition-[opacity] duration-[140ms] ${
+          className={`absolute inset-0 flex items-center justify-center transition-opacity duration-140 ${
             collapsed ? "opacity-100 delay-100" : "pointer-events-none opacity-0"
           }`}
         >
@@ -114,8 +114,8 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
               <span
                 className={`whitespace-nowrap pl-2.5 transition-[opacity,transform] ease-out ${
                   collapsed
-                    ? "opacity-0 -translate-x-1 duration-[100ms]"
-                    : "opacity-100 translate-x-0 duration-[180ms] delay-[120ms]"
+                    ? "opacity-0 -translate-x-1 duration-100"
+                    : "opacity-100 translate-x-0 duration-180 delay-120"
                 }`}
               >
                 {item.label}
@@ -130,8 +130,8 @@ export function Sidebar({ tab, onTabChange, showTeamTab }: SidebarProps) {
         <div
           className={`overflow-hidden transition-[max-height,opacity] ease-in-out ${
             collapsed
-              ? "max-h-0 opacity-0 duration-[140ms]"
-              : "max-h-20 opacity-100 duration-[220ms] delay-75"
+              ? "max-h-0 opacity-0 duration-140"
+              : "max-h-20 opacity-100 duration-220 delay-75"
           }`}
         >
           <PresenceBar />
