@@ -604,8 +604,10 @@ export function ProjectsView() {
           initial={findResource(colorTargetId)?.color ?? null}
           presets={getColorPresetsForType(findResource(colorTargetId)?.type ?? "project")}
           onConfirm={async (color) => {
+            const r = findResource(colorTargetId);
             await changeColor(colorTargetId, color);
             setColorTargetId(null);
+            gooeyToast.success(`Zmieniono kolor „${r?.name ?? ""}"`, { description: "Nowy kolor zastosowany do elementu." });
           }}
           onCancel={() => setColorTargetId(null)}
         />
